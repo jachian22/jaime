@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { TextViewer } from "@/app/_components/teleprompter/text-viewer";
 import { BrowserPanel } from "@/app/_components/teleprompter/browser-panel";
 import { ControlBar } from "@/app/_components/teleprompter/control-bar";
+import { AudioCapture } from "@/app/_components/teleprompter/audio-capture";
+import { WordMatcher } from "@/utils/word-matcher";
+import { useAIToolCalling } from "@/hooks/use-ai-tool-calling";
 
 const STORAGE_KEYS = {
   SCRIPT_TEXT: "teleprompter_script",
@@ -18,6 +21,9 @@ export default function TeleprompterPage() {
   const [isRecording, setIsRecording] = useState(false);
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [recentTranscript, setRecentTranscript] = useState("");
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'ready' | 'closed'>('closed');
+  const matcherRef = useRef<WordMatcher | null>(null);
 
   // Load script and current index on mount
   useEffect(() => {
@@ -47,6 +53,13 @@ export default function TeleprompterPage() {
     }
   }, [currentWordIndex, isLoading]);
 
+  // Initialize WordMatcher when script loads
+  useEffect(() => {
+    if (scriptText && !matcherRef.current) {
+      matcherRef.current = new WordMatcher(scriptText, currentWordIndex);
+    }
+  }, [scriptText, currentWordIndex]);
+
   const handleBackToEdit = () => {
     setIsRecording(false);
     router.push("/");
@@ -54,7 +67,6 @@ export default function TeleprompterPage() {
 
   const handleToggleRecording = () => {
     setIsRecording(!isRecording);
-    // TODO: Implement Deepgram integration
   };
 
   const handleReset = () => {
@@ -75,13 +87,50 @@ export default function TeleprompterPage() {
     setBrowserUrl(null);
   };
 
-  // Demo: Open browser after some time (for testing)
-  useEffect(() => {
-    if (currentWordIndex === 20 && browserUrl === null) {
-      // Example: trigger browser at word 20
-      setBrowserUrl("https://example.com");
-    }
-  }, [currentWordIndex, browserUrl]);
+  const handleTranscript = useCallback(
+    (transcript: string, isFinal: boolean) => {
+      if (!matcherRef.current) return;
+
+      console.log(
+        `[Transcript] ${isFinal ? "FINAL" : "interim"}:`,
+        transcript
+      );
+
+      // OPTIMIZATION: Skip word matching on interim results
+      // This eliminates 3-5 expensive matching operations per second
+      if (!isFinal) {
+        return; // Just log it, don't process
+      }
+
+      // Only run expensive matching on final results
+      const result = matcherRef.current.processTranscript(transcript, true);
+
+      if (result.matched) {
+        console.log(
+          `[Match] Confidence: ${(result.confidence * 100).toFixed(0)}% | New index: ${result.newIndex}`
+        );
+        setCurrentWordIndex(result.newIndex);
+      } else {
+        console.log("[No Match] Could not find matching words in script");
+      }
+
+      setRecentTranscript((prev) => (prev + " " + transcript).slice(-500));
+    },
+    []
+  );
+
+  // AI tool calling - automatically open browser when context warrants
+  // DISABLED FOR NOW - focusing on Deepgram integration first
+  // useAIToolCalling({
+  //   scriptText,
+  //   currentWordIndex,
+  //   recentTranscript,
+  //   onToolCall: (url, context) => {
+  //     setBrowserUrl(url);
+  //     console.log("[AI] Opening browser:", context);
+  //   },
+  //   enabled: isRecording,
+  // });
 
   // Show loading state while checking for script
   if (isLoading) {
@@ -117,6 +166,12 @@ export default function TeleprompterPage() {
         </div>
       )}
 
+      <AudioCapture
+        onTranscript={handleTranscript}
+        isRecording={isRecording}
+        onConnectionStatusChange={setConnectionStatus}
+      />
+
       <ControlBar
         isRecording={isRecording}
         onToggleRecording={handleToggleRecording}
@@ -125,6 +180,7 @@ export default function TeleprompterPage() {
         currentWordIndex={currentWordIndex}
         onManualAdvance={handleManualAdvance}
         onManualRewind={handleManualRewind}
+        connectionStatus={connectionStatus}
       />
     </>
   );

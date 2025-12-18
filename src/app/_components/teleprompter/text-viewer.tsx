@@ -13,10 +13,11 @@ export function TextViewer({ scriptText, currentWordIndex }: TextViewerProps) {
   const currentWordRef = useRef<HTMLSpanElement>(null);
 
   // Auto-scroll to keep current word visible
+  // OPTIMIZATION: Using instant scroll to eliminate animation overhead
   useEffect(() => {
     if (currentWordRef.current) {
       currentWordRef.current.scrollIntoView({
-        behavior: "smooth",
+        behavior: "instant",
         block: "center",
       });
     }

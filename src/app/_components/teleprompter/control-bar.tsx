@@ -8,6 +8,7 @@ interface ControlBarProps {
   currentWordIndex: number;
   onManualAdvance: () => void;
   onManualRewind: () => void;
+  connectionStatus: 'connecting' | 'ready' | 'closed';
 }
 
 export function ControlBar({
@@ -18,6 +19,7 @@ export function ControlBar({
   currentWordIndex,
   onManualAdvance,
   onManualRewind,
+  connectionStatus,
 }: ControlBarProps) {
   return (
     <div className="fixed bottom-0 left-0 right-0 border-t border-white/10 bg-gradient-to-b from-[#2e026d] to-[#15162c] p-4">
@@ -54,16 +56,42 @@ export function ControlBar({
             </svg>
           </button>
 
-          <button
-            onClick={onToggleRecording}
-            className={`rounded-full px-10 py-3 font-semibold transition ${
-              isRecording
-                ? "bg-red-500 text-white hover:bg-red-600"
-                : "bg-white/10 text-white hover:bg-white/20"
-            }`}
-          >
-            {isRecording ? "⏸ Pause" : "▶ Start"}
-          </button>
+          <div className="relative flex items-center gap-3">
+            {/* Connection status indicator */}
+            {isRecording && (
+              <div className="flex items-center gap-2">
+                {connectionStatus === 'connecting' && (
+                  <>
+                    <div className="relative flex h-3 w-3">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-yellow-400 opacity-75"></span>
+                      <span className="relative inline-flex h-3 w-3 rounded-full bg-yellow-500"></span>
+                    </div>
+                    <span className="text-sm text-yellow-400">Connecting...</span>
+                  </>
+                )}
+                {connectionStatus === 'ready' && (
+                  <>
+                    <div className="relative flex h-3 w-3">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
+                      <span className="relative inline-flex h-3 w-3 rounded-full bg-green-500"></span>
+                    </div>
+                    <span className="text-sm text-green-400">Listening</span>
+                  </>
+                )}
+              </div>
+            )}
+
+            <button
+              onClick={onToggleRecording}
+              className={`rounded-full px-10 py-3 font-semibold transition ${
+                isRecording
+                  ? "bg-red-500 text-white hover:bg-red-600"
+                  : "bg-white/10 text-white hover:bg-white/20"
+              }`}
+            >
+              {isRecording ? "⏸ Pause" : "▶ Start"}
+            </button>
+          </div>
 
           <button
             onClick={onManualAdvance}
