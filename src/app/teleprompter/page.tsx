@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { TextViewer } from "@/app/_components/teleprompter/text-viewer";
 import { BrowserPanel } from "@/app/_components/teleprompter/browser-panel";
 import { ControlBar } from "@/app/_components/teleprompter/control-bar";
+import { AudioCapture } from "@/app/_components/teleprompter/audio-capture";
+import { FastWordMatcher } from "@/utils/fast-word-matcher";
+import { useAIToolCalling } from "@/hooks/use-ai-tool-calling";
 
 const STORAGE_KEYS = {
   SCRIPT_TEXT: "teleprompter_script",
@@ -18,6 +21,9 @@ export default function TeleprompterPage() {
   const [isRecording, setIsRecording] = useState(false);
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [recentTranscript, setRecentTranscript] = useState("");
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'ready' | 'closed'>('closed');
+  const matcherRef = useRef<FastWordMatcher | null>(null);
 
   // Load script and current index on mount
   useEffect(() => {
@@ -47,6 +53,13 @@ export default function TeleprompterPage() {
     }
   }, [currentWordIndex, isLoading]);
 
+  // Initialize FastWordMatcher when script loads
+  useEffect(() => {
+    if (scriptText && !matcherRef.current) {
+      matcherRef.current = new FastWordMatcher(scriptText, currentWordIndex);
+    }
+  }, [scriptText, currentWordIndex]);
+
   const handleBackToEdit = () => {
     setIsRecording(false);
     router.push("/");
@@ -54,7 +67,6 @@ export default function TeleprompterPage() {
 
   const handleToggleRecording = () => {
     setIsRecording(!isRecording);
-    // TODO: Implement Deepgram integration
   };
 
   const handleReset = () => {
@@ -75,18 +87,61 @@ export default function TeleprompterPage() {
     setBrowserUrl(null);
   };
 
-  // Demo: Open browser after some time (for testing)
-  useEffect(() => {
-    if (currentWordIndex === 20 && browserUrl === null) {
-      // Example: trigger browser at word 20
-      setBrowserUrl("https://example.com");
-    }
-  }, [currentWordIndex, browserUrl]);
+  const handleTranscript = useCallback(
+    (transcript: string, isFinal: boolean) => {
+      if (!matcherRef.current) return;
+
+      console.log(
+        `[Transcript] ${isFinal ? "FINAL" : "interim"}:`,
+        transcript
+      );
+
+      const words = transcript.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+
+      if (isFinal) {
+        // Use phrase matching with position correction for final transcripts
+        // This corrects any jumps that happened from interim results
+        const newIndex = matcherRef.current.processFinalTranscript(words);
+        if (newIndex !== null) {
+          setCurrentWordIndex(newIndex);
+          console.log(`[Match] Final phrase (${words.join(' ')}) → Index ${newIndex}`);
+        } else {
+          console.log(`[No Match] Could not match final: "${words.join(' ')}"`);
+        }
+        setRecentTranscript((prev) => (prev + " " + transcript).slice(-500));
+      } else {
+        // For interim transcripts, only process the LAST word
+        // This prevents premature greying from processing accumulated words
+        const lastWord = words[words.length - 1];
+        if (lastWord) {
+          const newIndex = matcherRef.current.processWord(lastWord);
+          if (newIndex !== null) {
+            setCurrentWordIndex(newIndex);
+            console.log(`[Match] Interim word "${lastWord}" → Index ${newIndex}`);
+          }
+        }
+      }
+    },
+    []
+  );
+
+  // AI tool calling - automatically open browser when context warrants
+  // DISABLED FOR NOW - focusing on Deepgram integration first
+  // useAIToolCalling({
+  //   scriptText,
+  //   currentWordIndex,
+  //   recentTranscript,
+  //   onToolCall: (url, context) => {
+  //     setBrowserUrl(url);
+  //     console.log("[AI] Opening browser:", context);
+  //   },
+  //   enabled: isRecording,
+  // });
 
   // Show loading state while checking for script
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-[#2e026d] to-[#15162c]">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-black to-zinc-900">
         <div className="text-white">Loading...</div>
       </div>
     );
@@ -96,7 +151,7 @@ export default function TeleprompterPage() {
     <>
       {browserUrl === null ? (
         // Fullscreen mode
-        <div className="min-h-screen bg-gradient-to-b from-[#2e026d] to-[#15162c] pb-24">
+        <div className="min-h-screen bg-gradient-to-b from-black to-zinc-900 pb-24">
           <TextViewer
             scriptText={scriptText}
             currentWordIndex={currentWordIndex}
@@ -104,7 +159,7 @@ export default function TeleprompterPage() {
         </div>
       ) : (
         // Split-screen mode
-        <div className="flex min-h-screen bg-gradient-to-b from-[#2e026d] to-[#15162c] pb-24">
+        <div className="flex min-h-screen bg-gradient-to-b from-black to-zinc-900 pb-24">
           <div className="w-1/2 border-r border-white/10">
             <TextViewer
               scriptText={scriptText}
@@ -117,6 +172,12 @@ export default function TeleprompterPage() {
         </div>
       )}
 
+      <AudioCapture
+        onTranscript={handleTranscript}
+        isRecording={isRecording}
+        onConnectionStatusChange={setConnectionStatus}
+      />
+
       <ControlBar
         isRecording={isRecording}
         onToggleRecording={handleToggleRecording}
@@ -125,6 +186,7 @@ export default function TeleprompterPage() {
         currentWordIndex={currentWordIndex}
         onManualAdvance={handleManualAdvance}
         onManualRewind={handleManualRewind}
+        connectionStatus={connectionStatus}
       />
     </>
   );
