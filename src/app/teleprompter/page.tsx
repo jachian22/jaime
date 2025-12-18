@@ -96,21 +96,30 @@ export default function TeleprompterPage() {
         transcript
       );
 
-      // NEW: Process BOTH interim and final transcripts for real-time updates
-      // Split into words and process each individually
-      const words = transcript.toLowerCase().split(/\s+/);
+      const words = transcript.toLowerCase().split(/\s+/).filter(w => w.length > 0);
 
-      for (const word of words) {
-        const newIndex = matcherRef.current.processWord(word);
+      if (isFinal) {
+        // Use phrase matching with position correction for final transcripts
+        // This corrects any jumps that happened from interim results
+        const newIndex = matcherRef.current.processFinalTranscript(words);
         if (newIndex !== null) {
           setCurrentWordIndex(newIndex);
-          console.log(`[Match] Word "${word}" → Index ${newIndex}`);
+          console.log(`[Match] Final phrase (${words.join(' ')}) → Index ${newIndex}`);
+        } else {
+          console.log(`[No Match] Could not match final: "${words.join(' ')}"`);
         }
-      }
-
-      // Only update transcript buffer on final results
-      if (isFinal) {
         setRecentTranscript((prev) => (prev + " " + transcript).slice(-500));
+      } else {
+        // For interim transcripts, only process the LAST word
+        // This prevents premature greying from processing accumulated words
+        const lastWord = words[words.length - 1];
+        if (lastWord) {
+          const newIndex = matcherRef.current.processWord(lastWord);
+          if (newIndex !== null) {
+            setCurrentWordIndex(newIndex);
+            console.log(`[Match] Interim word "${lastWord}" → Index ${newIndex}`);
+          }
+        }
       }
     },
     []
@@ -132,7 +141,7 @@ export default function TeleprompterPage() {
   // Show loading state while checking for script
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-[#2e026d] to-[#15162c]">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-black to-zinc-900">
         <div className="text-white">Loading...</div>
       </div>
     );
@@ -142,7 +151,7 @@ export default function TeleprompterPage() {
     <>
       {browserUrl === null ? (
         // Fullscreen mode
-        <div className="min-h-screen bg-gradient-to-b from-[#2e026d] to-[#15162c] pb-24">
+        <div className="min-h-screen bg-gradient-to-b from-black to-zinc-900 pb-24">
           <TextViewer
             scriptText={scriptText}
             currentWordIndex={currentWordIndex}
@@ -150,7 +159,7 @@ export default function TeleprompterPage() {
         </div>
       ) : (
         // Split-screen mode
-        <div className="flex min-h-screen bg-gradient-to-b from-[#2e026d] to-[#15162c] pb-24">
+        <div className="flex min-h-screen bg-gradient-to-b from-black to-zinc-900 pb-24">
           <div className="w-1/2 border-r border-white/10">
             <TextViewer
               scriptText={scriptText}

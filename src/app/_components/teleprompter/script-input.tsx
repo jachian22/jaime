@@ -32,7 +32,7 @@ export function ScriptInput() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#2e026d] to-[#15162c] px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-black to-zinc-900 px-4">
       <div className="w-full max-w-4xl space-y-6">
         <div className="text-center">
           <h1 className="text-5xl font-extrabold tracking-tight text-white sm:text-[5rem]">

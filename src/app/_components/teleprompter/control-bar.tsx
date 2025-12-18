@@ -22,7 +22,7 @@ export function ControlBar({
   connectionStatus,
 }: ControlBarProps) {
   return (
-    <div className="fixed bottom-0 left-0 right-0 border-t border-white/10 bg-gradient-to-b from-[#2e026d] to-[#15162c] p-4">
+    <div className="fixed bottom-0 left-0 right-0 border-t border-white/10 bg-gradient-to-t from-black to-zinc-900 p-4">
       <div className="mx-auto flex max-w-4xl items-center justify-between gap-4">
         {/* Left section */}
         <div className="flex items-center gap-2">

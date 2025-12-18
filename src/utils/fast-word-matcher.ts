@@ -64,6 +64,62 @@ export class FastWordMatcher {
   }
 
   /**
+   * Process final transcript with position correction
+   * If interim results caused us to jump ahead incorrectly, this will correct the position
+   */
+  processFinalTranscript(words: string[]): number | null {
+    if (words.length === 0) return null;
+
+    const cleanWords = words.map(w => w.toLowerCase().replace(/[^\w]/g, '')).filter(w => w.length > 0);
+    if (cleanWords.length === 0) return null;
+
+    // Try to match the phrase starting from current position
+    let matchIndex = this.findPhraseMatch(cleanWords, this.currentIndex);
+
+    // If no match forward, look backwards (interim might have jumped ahead)
+    if (matchIndex === null) {
+      const lookBackWindow = 10;
+      const startSearch = Math.max(0, this.currentIndex - lookBackWindow);
+      matchIndex = this.findPhraseMatch(cleanWords, startSearch);
+    }
+
+    if (matchIndex !== null) {
+      // Update position to end of matched phrase
+      this.currentIndex = matchIndex + cleanWords.length;
+      this.lastWord = cleanWords[cleanWords.length - 1] || '';
+      return this.currentIndex;
+    }
+
+    return null;
+  }
+
+  /**
+   * Find a phrase match starting from a given position
+   * Returns the starting index if found, null otherwise
+   */
+  private findPhraseMatch(words: string[], startIndex: number): number | null {
+    const searchWindow = 10;
+    const searchEnd = Math.min(startIndex + searchWindow, this.scriptWords.length);
+
+    for (let i = startIndex; i < searchEnd; i++) {
+      // Check if all words in the phrase match starting at position i
+      let allMatch = true;
+      for (let j = 0; j < words.length; j++) {
+        if (i + j >= this.scriptWords.length || this.scriptWords[i + j] !== words[j]) {
+          allMatch = false;
+          break;
+        }
+      }
+
+      if (allMatch) {
+        return i; // Found match at position i
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Get current word index
    */
   getCurrentIndex(): number {
