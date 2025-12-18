@@ -1,4 +1,4 @@
-import { google } from "@ai-sdk/google";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { streamText, tool } from "ai";
 import { z } from "zod";
 import { env } from "@/env";
@@ -11,10 +11,13 @@ export async function POST(req: Request) {
   const contextEnd = Math.min(scriptText.length, currentPosition + 200);
   const scriptExcerpt = scriptText.substring(contextStart, contextEnd);
 
+  // Initialize Google provider with API key
+  const google = createGoogleGenerativeAI({
+    apiKey: env.GOOGLE_API_KEY,
+  });
+
   const result = streamText({
-    model: google("gemini-2.0-flash-exp", {
-      apiKey: env.GOOGLE_API_KEY,
-    }),
+    model: google("gemini-2.0-flash-exp"),
     tools: {
       openWebpage: tool({
         description:
