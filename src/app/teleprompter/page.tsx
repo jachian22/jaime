@@ -6,7 +6,7 @@ import { TextViewer } from "@/app/_components/teleprompter/text-viewer";
 import { BrowserPanel } from "@/app/_components/teleprompter/browser-panel";
 import { ControlBar } from "@/app/_components/teleprompter/control-bar";
 import { AudioCapture } from "@/app/_components/teleprompter/audio-capture";
-import { WordMatcher } from "@/utils/word-matcher";
+import { FastWordMatcher } from "@/utils/fast-word-matcher";
 import { useAIToolCalling } from "@/hooks/use-ai-tool-calling";
 
 const STORAGE_KEYS = {
@@ -23,7 +23,7 @@ export default function TeleprompterPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [recentTranscript, setRecentTranscript] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'ready' | 'closed'>('closed');
-  const matcherRef = useRef<WordMatcher | null>(null);
+  const matcherRef = useRef<FastWordMatcher | null>(null);
 
   // Load script and current index on mount
   useEffect(() => {
@@ -53,10 +53,10 @@ export default function TeleprompterPage() {
     }
   }, [currentWordIndex, isLoading]);
 
-  // Initialize WordMatcher when script loads
+  // Initialize FastWordMatcher when script loads
   useEffect(() => {
     if (scriptText && !matcherRef.current) {
-      matcherRef.current = new WordMatcher(scriptText, currentWordIndex);
+      matcherRef.current = new FastWordMatcher(scriptText, currentWordIndex);
     }
   }, [scriptText, currentWordIndex]);
 
@@ -96,25 +96,22 @@ export default function TeleprompterPage() {
         transcript
       );
 
-      // OPTIMIZATION: Skip word matching on interim results
-      // This eliminates 3-5 expensive matching operations per second
-      if (!isFinal) {
-        return; // Just log it, don't process
+      // NEW: Process BOTH interim and final transcripts for real-time updates
+      // Split into words and process each individually
+      const words = transcript.toLowerCase().split(/\s+/);
+
+      for (const word of words) {
+        const newIndex = matcherRef.current.processWord(word);
+        if (newIndex !== null) {
+          setCurrentWordIndex(newIndex);
+          console.log(`[Match] Word "${word}" → Index ${newIndex}`);
+        }
       }
 
-      // Only run expensive matching on final results
-      const result = matcherRef.current.processTranscript(transcript, true);
-
-      if (result.matched) {
-        console.log(
-          `[Match] Confidence: ${(result.confidence * 100).toFixed(0)}% | New index: ${result.newIndex}`
-        );
-        setCurrentWordIndex(result.newIndex);
-      } else {
-        console.log("[No Match] Could not find matching words in script");
+      // Only update transcript buffer on final results
+      if (isFinal) {
+        setRecentTranscript((prev) => (prev + " " + transcript).slice(-500));
       }
-
-      setRecentTranscript((prev) => (prev + " " + transcript).slice(-500));
     },
     []
   );
