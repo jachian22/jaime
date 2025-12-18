@@ -33,9 +33,6 @@ export async function POST(req: Request) {
               "Why this webpage is relevant to the current script context"
             ),
         }),
-        execute: async ({ url, query, relevance }) => {
-          return { url, query, relevance };
-        },
       }),
     },
     prompt: `You are helping with a voice-aware teleprompter. The user is reading a script and you should open relevant webpages when context suggests it would be helpful.
