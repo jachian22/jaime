@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { PassageBasedUrl, StandaloneUrl, UrlConfigState } from "@/types/url-config";
+import type { PassageBasedUrl, StandaloneUrl, UrlConfigState, WebpageDisplaySettings } from "@/types/url-config";
 
 const STORAGE_KEY = "teleprompter_script";
 const CONFIG_STORAGE_KEY = "teleprompter_url_config";
@@ -18,6 +18,11 @@ export default function ConfigPage() {
   // URL configuration state
   const [passageUrls, setPassageUrls] = useState<PassageBasedUrl[]>([]);
   const [standaloneUrls, setStandaloneUrls] = useState<StandaloneUrl[]>([]);
+  const [displaySettings, setDisplaySettings] = useState<WebpageDisplaySettings>({
+    holdTime: 2,
+    scrollSpeed: 50,
+    splitPercentage: 50
+  });
 
   // UI state
   const [showUrlDialog, setShowUrlDialog] = useState(false);
@@ -44,6 +49,9 @@ export default function ConfigPage() {
       const config = JSON.parse(savedConfig) as UrlConfigState;
       setPassageUrls(config.passageUrls ?? []);
       setStandaloneUrls(config.standaloneUrls ?? []);
+      if (config.displaySettings) {
+        setDisplaySettings(config.displaySettings);
+      }
     }
   }, [router]);
 
@@ -52,11 +60,12 @@ export default function ConfigPage() {
     if (passageUrls.length > 0 || standaloneUrls.length > 0) {
       const config: UrlConfigState = {
         passageUrls,
-        standaloneUrls
+        standaloneUrls,
+        displaySettings
       };
       localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
     }
-  }, [passageUrls, standaloneUrls]);
+  }, [passageUrls, standaloneUrls, displaySettings]);
 
   const handleCaptureSelection = () => {
     const selection = window.getSelection();
@@ -151,7 +160,10 @@ export default function ConfigPage() {
           : u
       ));
     } else {
-      // Add new URL
+      // Add new URL with next queue position
+      const allUrls = [...passageUrls, ...standaloneUrls];
+      const maxPosition = allUrls.reduce((max, u) => Math.max(max, u.queuePosition), -1);
+
       const newUrl: PassageBasedUrl = {
         id: crypto.randomUUID(),
         type: 'passage',
@@ -160,7 +172,8 @@ export default function ConfigPage() {
         selectedText: currentSelectedText,
         url: currentUrl,
         title: currentTitle,
-        relevance: currentRelevance
+        relevance: currentRelevance,
+        queuePosition: maxPosition + 1
       };
 
       setPassageUrls([...passageUrls, newUrl]);
@@ -201,8 +214,10 @@ export default function ConfigPage() {
           : u
       ));
     } else {
-      // Add new URL with next order number
-      const maxOrder = standaloneUrls.reduce((max, u) => Math.max(max, u.order), -1);
+      // Add new URL with next queue position
+      const allUrls = [...passageUrls, ...standaloneUrls];
+      const maxPosition = allUrls.reduce((max, u) => Math.max(max, u.queuePosition), -1);
+
       const newUrl: StandaloneUrl = {
         id: crypto.randomUUID(),
         type: 'standalone',
@@ -210,7 +225,7 @@ export default function ConfigPage() {
         url: currentUrl,
         title: currentTitle,
         relevance: currentRelevance,
-        order: maxOrder + 1
+        queuePosition: maxPosition + 1
       };
 
       setStandaloneUrls([...standaloneUrls, newUrl]);
@@ -225,10 +240,10 @@ export default function ConfigPage() {
     setStandaloneUrls(standaloneUrls.filter(u => u.id !== id));
   };
 
-  // Drag and drop handlers for standalone URLs
-  const handleDragStart = (e: React.DragEvent, url: StandaloneUrl) => {
+  // Drag and drop handlers for combined queue
+  const handleDragStart = (e: React.DragEvent, url: PassageBasedUrl | StandaloneUrl) => {
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', url.id);
+    e.dataTransfer.setData('text/plain', JSON.stringify({ id: url.id, type: url.type }));
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -236,27 +251,34 @@ export default function ConfigPage() {
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (e: React.DragEvent, targetUrl: StandaloneUrl) => {
+  const handleDrop = (e: React.DragEvent, targetUrl: PassageBasedUrl | StandaloneUrl) => {
     e.preventDefault();
-    const draggedId = e.dataTransfer.getData('text/plain');
+    const data = e.dataTransfer.getData('text/plain');
+    const { id: draggedId } = JSON.parse(data) as { id: string; type: 'passage' | 'standalone' };
 
     if (draggedId === targetUrl.id) return;
 
-    const draggedUrl = standaloneUrls.find(u => u.id === draggedId);
+    // Find dragged URL
+    const allUrls = [...passageUrls, ...standaloneUrls];
+    const draggedUrl = allUrls.find(u => u.id === draggedId);
     if (!draggedUrl) return;
 
-    // Swap order values
-    const newStandaloneUrls = standaloneUrls.map(u => {
-      if (u.id === draggedId) {
-        return { ...u, order: targetUrl.order };
-      }
-      if (u.id === targetUrl.id) {
-        return { ...u, order: draggedUrl.order };
-      }
-      return u;
-    });
+    // Swap queue positions
+    const draggedPosition = draggedUrl.queuePosition;
+    const targetPosition = targetUrl.queuePosition;
 
-    setStandaloneUrls(newStandaloneUrls);
+    // Update both passage and standalone URLs
+    setPassageUrls(passageUrls.map(u => {
+      if (u.id === draggedId) return { ...u, queuePosition: targetPosition };
+      if (u.id === targetUrl.id) return { ...u, queuePosition: draggedPosition };
+      return u;
+    }));
+
+    setStandaloneUrls(standaloneUrls.map(u => {
+      if (u.id === draggedId) return { ...u, queuePosition: targetPosition };
+      if (u.id === targetUrl.id) return { ...u, queuePosition: draggedPosition };
+      return u;
+    }));
   };
 
   const loadTestData = () => {
@@ -274,7 +296,8 @@ export default function ConfigPage() {
         selectedText: firstSelection,
         url: "https://react.dev",
         title: "React Documentation",
-        relevance: "React official documentation"
+        relevance: "React official documentation",
+        queuePosition: 0
       },
       {
         id: "test-2",
@@ -284,7 +307,8 @@ export default function ConfigPage() {
         selectedText: secondSelection,
         url: "https://nextjs.org/docs",
         title: "Next.js Documentation",
-        relevance: "Next.js documentation"
+        relevance: "Next.js documentation",
+        queuePosition: 2
       }
     ];
 
@@ -296,7 +320,7 @@ export default function ConfigPage() {
         url: "https://www.typescriptlang.org/docs/",
         title: "TypeScript Docs",
         relevance: "TypeScript documentation",
-        order: 0
+        queuePosition: 1
       },
       {
         id: "test-4",
@@ -305,7 +329,7 @@ export default function ConfigPage() {
         url: "https://tailwindcss.com/docs",
         title: "Tailwind CSS Docs",
         relevance: "Tailwind CSS documentation",
-        order: 1
+        queuePosition: 3
       }
     ];
 
@@ -316,17 +340,15 @@ export default function ConfigPage() {
   const startTeleprompter = () => {
     const config: UrlConfigState = {
       passageUrls,
-      standaloneUrls
+      standaloneUrls,
+      displaySettings
     };
     localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
     router.push("/teleprompter");
   };
 
-  // Sort passage URLs by their position in the script
-  const sortedPassageUrls = [...passageUrls].sort((a, b) => a.startWordIndex - b.startWordIndex);
-
-  // Sort standalone URLs by their order field
-  const sortedStandaloneUrls = [...standaloneUrls].sort((a, b) => a.order - b.order);
+  // Combined queue sorted by queuePosition for manual "Next" button
+  const combinedQueue = [...passageUrls, ...standaloneUrls].sort((a, b) => a.queuePosition - b.queuePosition);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-black to-zinc-900">
@@ -401,106 +423,107 @@ export default function ConfigPage() {
 
         {/* URL Queue Panel */}
         <div className="w-96 border-l border-white/10 bg-black/40 p-6 overflow-y-auto">
-          <h2 className="mb-4 text-xl font-bold text-white">URL Queue</h2>
+          <h2 className="mb-4 text-xl font-bold text-white">Manual Queue</h2>
+          <p className="mb-4 text-xs text-white/50">Drag to reorder for manual &quot;Next&quot; button</p>
 
-          {sortedPassageUrls.length === 0 && sortedStandaloneUrls.length === 0 ? (
+          {/* Display Settings */}
+          <div className="mb-6 rounded-lg bg-white/5 p-4">
+            <h3 className="mb-3 text-sm font-semibold text-white">Webpage Display Settings</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs text-white/70">Hold Time (seconds)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={displaySettings.holdTime}
+                  onChange={(e) => setDisplaySettings({...displaySettings, holdTime: Number(e.target.value)})}
+                  className="w-full rounded bg-white/10 px-2 py-1 text-sm text-white"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-white/70">Scroll Speed (px/s, 0=no scroll)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={displaySettings.scrollSpeed}
+                  onChange={(e) => setDisplaySettings({...displaySettings, scrollSpeed: Number(e.target.value)})}
+                  className="w-full rounded bg-white/10 px-2 py-1 text-sm text-white"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-white/70">Webpage Width (%)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={displaySettings.splitPercentage}
+                  onChange={(e) => setDisplaySettings({...displaySettings, splitPercentage: Number(e.target.value)})}
+                  className="w-full rounded bg-white/10 px-2 py-1 text-sm text-white"
+                />
+              </div>
+            </div>
+          </div>
+
+          {combinedQueue.length === 0 ? (
             <p className="text-sm text-white/50">No URLs configured yet</p>
           ) : (
-            <div className="space-y-6">
-              {/* Passage-Based URLs (Non-Draggable) */}
-              {sortedPassageUrls.length > 0 && (
-                <div>
-                  <h3 className="mb-3 text-sm font-semibold text-white/60">Script Passages</h3>
-                  <div className="space-y-3">
-                    {sortedPassageUrls.map((urlConfig) => (
-                      <div key={urlConfig.id} className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-4">
-                        <div className="mb-2">
-                          <div className="mb-1 flex items-center gap-2">
-                            <span className="text-xs font-semibold text-blue-400">
-                              {urlConfig.title}
-                            </span>
-                          </div>
+            <div className="space-y-3">
+              {combinedQueue.map((urlConfig, index) => {
+                const isPassage = urlConfig.type === 'passage';
+                const color = isPassage ? 'blue' : 'green';
+
+                return (
+                  <div
+                    key={urlConfig.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, urlConfig)}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, urlConfig)}
+                    className={`rounded-lg bg-${color}-500/10 border border-${color}-500/20 p-4 cursor-move hover:bg-${color}-500/20 transition`}
+                  >
+                    <div className="mb-2">
+                      <div className="mb-1 flex items-center justify-between">
+                        <span className={`text-xs font-semibold text-${color}-400`}>
+                          #{index + 1} - {urlConfig.title}
+                        </span>
+                        <span className="text-xs text-white/40">⋮⋮</span>
+                      </div>
+                      {isPassage ? (
+                        <>
                           <p className="text-xs text-white/80 italic mb-1">
-                            &quot;{urlConfig.selectedText}&quot;
+                            &quot;{'selectedText' in urlConfig ? urlConfig.selectedText : ''}&quot;
                           </p>
                           <p className="text-xs text-white/40">
-                            (words {urlConfig.startWordIndex}-{urlConfig.endWordIndex})
+                            (words {'startWordIndex' in urlConfig ? `${urlConfig.startWordIndex}-${urlConfig.endWordIndex}` : ''})
                           </p>
-                          <p className="mt-2 text-sm text-white break-all">{urlConfig.url}</p>
-                          {urlConfig.relevance && (
-                            <p className="mt-1 text-xs text-white/50">{urlConfig.relevance}</p>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleEditUrl(urlConfig)}
-                            className="text-xs text-blue-400 hover:text-blue-300"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleRemoveUrl(urlConfig.id)}
-                            className="text-xs text-red-400 hover:text-red-300"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Standalone URLs (Draggable) */}
-              {sortedStandaloneUrls.length > 0 && (
-                <div>
-                  <h3 className="mb-3 text-sm font-semibold text-white/60">
-                    Optional Keywords <span className="text-xs text-white/40">(drag to reorder)</span>
-                  </h3>
-                  <div className="space-y-3">
-                    {sortedStandaloneUrls.map((urlConfig) => (
-                      <div
-                        key={urlConfig.id}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, urlConfig)}
-                        onDragOver={handleDragOver}
-                        onDrop={(e) => handleDrop(e, urlConfig)}
-                        className="rounded-lg bg-green-500/10 border border-green-500/20 p-4 cursor-move hover:bg-green-500/20 transition"
+                        </>
+                      ) : (
+                        <p className="text-xs text-white/60 mb-1">
+                          Trigger: &quot;{'triggerPhrase' in urlConfig ? urlConfig.triggerPhrase : ''}&quot;
+                        </p>
+                      )}
+                      <p className="mt-2 text-sm text-white break-all">{urlConfig.url}</p>
+                      {urlConfig.relevance && (
+                        <p className="mt-1 text-xs text-white/50">{urlConfig.relevance}</p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleEditUrl(urlConfig)}
+                        className={`text-xs text-${color}-400 hover:text-${color}-300`}
                       >
-                        <div className="mb-2">
-                          <div className="mb-1 flex items-center gap-2">
-                            <span className="text-xs font-semibold text-green-400">
-                              {urlConfig.title}
-                            </span>
-                            <span className="text-xs text-white/40">⋮⋮</span>
-                          </div>
-                          <p className="text-xs text-white/60 mb-1">
-                            Trigger: &quot;{urlConfig.triggerPhrase}&quot;
-                          </p>
-                          <p className="mt-2 text-sm text-white break-all">{urlConfig.url}</p>
-                          {urlConfig.relevance && (
-                            <p className="mt-1 text-xs text-white/50">{urlConfig.relevance}</p>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleEditUrl(urlConfig)}
-                            className="text-xs text-green-400 hover:text-green-300"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleRemoveUrl(urlConfig.id)}
-                            className="text-xs text-red-400 hover:text-red-300"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleRemoveUrl(urlConfig.id)}
+                        className="text-xs text-red-400 hover:text-red-300"
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })}
             </div>
           )}
         </div>

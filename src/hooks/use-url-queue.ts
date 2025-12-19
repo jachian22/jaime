@@ -68,22 +68,22 @@ export function useUrlQueue({
     }
   }, [recentTranscript, config, enabled, onUrlTrigger]);
 
-  // Manual trigger for next standalone URL (sorted by order)
+  // Manual trigger for next URL in combined queue (sorted by queuePosition)
   const triggerNextInQueue = () => {
     if (!config) {
       console.log("[URL Queue] No configuration loaded");
       return null;
     }
 
-    // Get standalone URLs sorted by order
-    const sortedStandalone = [...config.standaloneUrls].sort((a, b) => a.order - b.order);
+    // Get combined queue sorted by queuePosition
+    const combinedQueue = [...config.passageUrls, ...config.standaloneUrls].sort((a, b) => a.queuePosition - b.queuePosition);
 
-    if (queueIndex >= sortedStandalone.length) {
+    if (queueIndex >= combinedQueue.length) {
       console.log("[URL Queue] No more URLs in queue");
       return null;
     }
 
-    const urlConfig = sortedStandalone[queueIndex];
+    const urlConfig = combinedQueue[queueIndex];
     if (!urlConfig) return null;
 
     console.log("[URL Queue] Manually triggered:", urlConfig);
@@ -92,13 +92,13 @@ export function useUrlQueue({
     return urlConfig;
   };
 
-  const sortedStandalone = config ? [...config.standaloneUrls].sort((a, b) => a.order - b.order) : [];
-  const hasNextInQueue = config !== null && queueIndex < sortedStandalone.length;
+  const combinedQueue = config ? [...config.passageUrls, ...config.standaloneUrls].sort((a, b) => a.queuePosition - b.queuePosition) : [];
+  const hasNextInQueue = config !== null && queueIndex < combinedQueue.length;
 
   return {
     triggerNextInQueue,
     hasNextInQueue,
     queueIndex,
-    totalInQueue: sortedStandalone.length,
+    totalInQueue: combinedQueue.length,
   };
 }

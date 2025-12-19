@@ -11,6 +11,7 @@ export interface PassageBasedUrl {
   url: string;
   title: string; // User-defined title for this URL
   relevance: string;
+  queuePosition: number; // Position in combined manual queue
 }
 
 export interface StandaloneUrl {
@@ -20,12 +21,19 @@ export interface StandaloneUrl {
   url: string;
   title: string; // User-defined title for this URL
   relevance: string;
-  order: number; // Manual ordering for drag-and-drop
+  queuePosition: number; // Position in combined manual queue
 }
 
 export type UrlConfig = PassageBasedUrl | StandaloneUrl;
 
+export interface WebpageDisplaySettings {
+  holdTime: number; // Seconds to hold at top before scrolling (0 = no hold)
+  scrollSpeed: number; // Pixels per second (0 = no auto-scroll)
+  splitPercentage: number; // 0-100, percentage of screen for webpage
+}
+
 export interface UrlConfigState {
   passageUrls: PassageBasedUrl[];
   standaloneUrls: StandaloneUrl[];
+  displaySettings: WebpageDisplaySettings;
 }
