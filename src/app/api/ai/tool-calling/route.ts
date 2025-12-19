@@ -41,7 +41,6 @@ export async function POST(req: Request) {
       // searchWeb,  // Uncomment when implementing Option 3
     },
     toolChoice: "auto",
-    maxSteps: 2, // Allow AI to make tool calls
     prompt: `You are helping with a voice-aware teleprompter. The user is reading a script and you should identify when opening relevant webpages would be helpful.
 
 Current script excerpt:
