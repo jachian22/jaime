@@ -40,7 +40,7 @@ export function AudioCapture({
 
         // Get temporary Deepgram token from our API
         const tokenResponse = await fetch("/api/deepgram/token");
-        const { token } = await tokenResponse.json();
+        const { token } = await tokenResponse.json() as { token: string };
 
         if (!token) {
           throw new Error("Failed to get Deepgram token");
@@ -72,8 +72,13 @@ export function AudioCapture({
           onConnectionStatusChange?.('ready');
         };
 
-        socket.onmessage = (message) => {
-          const data = JSON.parse(message.data);
+        socket.onmessage = (message: MessageEvent<string>) => {
+          const data = JSON.parse(message.data) as {
+            channel?: {
+              alternatives?: Array<{ transcript: string }>;
+            };
+            is_final?: boolean;
+          };
           console.log("[Deepgram] Raw message:", data);
 
           const transcript = data.channel?.alternatives?.[0]?.transcript;
@@ -148,7 +153,7 @@ export function AudioCapture({
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [isRecording, onTranscript]);
+  }, [isRecording, onTranscript, onConnectionStatusChange]);
 
   return null; // No UI, just audio handling
 }
