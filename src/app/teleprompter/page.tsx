@@ -22,8 +22,10 @@ export default function TeleprompterPage() {
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [recentTranscript, setRecentTranscript] = useState("");
+  const [completedSentence, setCompletedSentence] = useState<string>("");
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'ready' | 'closed'>('closed');
   const matcherRef = useRef<FastWordMatcher | null>(null);
+  const sentenceBufferRef = useRef<string>("");
 
   // Load script and current index on mount
   useEffect(() => {
@@ -109,6 +111,17 @@ export default function TeleprompterPage() {
           console.log(`[No Match] Could not match final: "${words.join(' ')}"`);
         }
         setRecentTranscript((prev) => (prev + " " + transcript).slice(-500));
+
+        // Sentence boundary detection for AI tool calling
+        sentenceBufferRef.current += " " + transcript;
+
+        // Check if sentence ended (. ! ?)
+        if (/[.!?]\s*$/.test(transcript)) {
+          const completeSentence = sentenceBufferRef.current.trim();
+          console.log("[Sentence Complete]", completeSentence);
+          setCompletedSentence(completeSentence);
+          sentenceBufferRef.current = ""; // Reset buffer
+        }
       } else {
         // For interim transcripts, only process the LAST word
         // This prevents premature greying from processing accumulated words
@@ -126,17 +139,18 @@ export default function TeleprompterPage() {
   );
 
   // AI tool calling - automatically open browser when context warrants
-  // DISABLED FOR NOW - focusing on Deepgram integration first
-  // useAIToolCalling({
-  //   scriptText,
-  //   currentWordIndex,
-  //   recentTranscript,
-  //   onToolCall: (url, context) => {
-  //     setBrowserUrl(url);
-  //     console.log("[AI] Opening browser:", context);
-  //   },
-  //   enabled: isRecording,
-  // });
+  // Triggers on sentence completion (non-blocking)
+  useAIToolCalling({
+    scriptText,
+    currentWordIndex,
+    recentTranscript,
+    completedSentence,
+    onToolCall: (url, relevance, category) => {
+      setBrowserUrl(url);
+      console.log(`[AI] Opening ${category}:`, url, "-", relevance);
+    },
+    enabled: isRecording,
+  });
 
   // Show loading state while checking for script
   if (isLoading) {
