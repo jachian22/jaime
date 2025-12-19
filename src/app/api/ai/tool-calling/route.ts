@@ -4,38 +4,45 @@ import { z } from "zod";
 import { env } from "@/env";
 
 export async function POST(req: Request) {
-  const { scriptText, currentPosition, recentTranscript } = await req.json();
+  try {
+    const { scriptText, currentPosition, recentTranscript } = await req.json();
 
-  // Get a window of text around the current position
-  const contextStart = Math.max(0, currentPosition - 100);
-  const contextEnd = Math.min(scriptText.length, currentPosition + 200);
-  const scriptExcerpt = scriptText.substring(contextStart, contextEnd);
+    // Get a window of text around the current position
+    const contextStart = Math.max(0, currentPosition - 100);
+    const contextEnd = Math.min(scriptText.length, currentPosition + 200);
+    const scriptExcerpt = scriptText.substring(contextStart, contextEnd);
 
-  // Initialize Google provider with API key
-  const google = createGoogleGenerativeAI({
-    apiKey: env.GOOGLE_API_KEY,
+    // Initialize Google provider with API key
+    const google = createGoogleGenerativeAI({
+      apiKey: env.GOOGLE_API_KEY,
+    });
+
+  // Define tools (structured for easy addition of searchWeb later)
+  const openWebpage = tool({
+    description: "Open a webpage or documentation in the browser panel when relevant to the script context",
+    inputSchema: z.object({
+      url: z.string().describe("The URL to open"),
+      relevance: z.string().describe("Why this webpage is relevant to the current context"),
+      category: z.enum(["documentation", "tutorial", "reference", "article"]).describe("Type of resource")
+    }),
+    execute: async ({ url, relevance, category }) => {
+      // Return the tool call result - will be handled by client
+      return { url, relevance, category };
+    },
   });
+
+  // Future: Add searchWeb tool here for Option 3
+  // const searchWeb = tool({ ... });
 
   const result = streamText({
     model: google("gemini-2.0-flash-exp"),
     tools: {
-      openWebpage: tool({
-        description:
-          "Open a webpage or article in the browser panel when relevant context is mentioned",
-        parameters: z.object({
-          url: z.string().describe("The URL to open"),
-          query: z
-            .string()
-            .describe("The search query or context that triggered this"),
-          relevance: z
-            .string()
-            .describe(
-              "Why this webpage is relevant to the current script context"
-            ),
-        }),
-      }),
+      openWebpage,
+      // searchWeb,  // Uncomment when implementing Option 3
     },
-    prompt: `You are helping with a voice-aware teleprompter. The user is reading a script and you should open relevant webpages when context suggests it would be helpful.
+    toolChoice: "auto",
+    maxSteps: 2, // Allow AI to make tool calls
+    prompt: `You are helping with a voice-aware teleprompter. The user is reading a script and you should identify when opening relevant webpages would be helpful.
 
 Current script excerpt:
 "${scriptExcerpt}"
@@ -43,16 +50,29 @@ Current script excerpt:
 Recent speech:
 "${recentTranscript}"
 
-Analyze if the current context would benefit from showing a webpage (documentation, reference, example, article, etc.).
+Analyze if the current context would benefit from showing a webpage (documentation, reference, tutorial, article, etc.).
 
 Important guidelines:
-- Only call the tool if there's a SPECIFIC, RELEVANT webpage that would help
+- Only call openWebpage if there's a SPECIFIC, RELEVANT URL that would help
 - Prefer official documentation over general articles
-- Don't call the tool for vague or general topics
-- Be conservative - only trigger when it would genuinely add value
+- Use URLs you know from your training data (you cannot search)
+- Don't suggest for vague or general topics
+- Be conservative - only when it would genuinely add value
+- Do NOT make up URLs - only suggest URLs you're confident exist
 
-If appropriate, call the openWebpage tool with the URL and explanation.`,
-  });
+If appropriate, call the openWebpage tool with the exact URL and explanation.`,
+    });
 
-  return result.toDataStreamResponse();
+    // AI SDK 5: Use toUIMessageStreamResponse for tool call support
+    return result.toUIMessageStreamResponse();
+  } catch (error) {
+    console.error("[AI Tool Calling Error]", error);
+    return new Response(
+      JSON.stringify({
+        error: "Failed to process AI request",
+        details: error instanceof Error ? error.message : String(error)
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
 }
