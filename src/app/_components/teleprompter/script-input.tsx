@@ -27,7 +27,7 @@ export function ScriptInput() {
   const handleStartSession = () => {
     if (scriptText.trim()) {
       localStorage.setItem(STORAGE_KEY, scriptText);
-      router.push("/teleprompter");
+      router.push("/config");
     }
   };
 
@@ -56,7 +56,7 @@ export function ScriptInput() {
             disabled={!scriptText.trim()}
             className="w-full rounded-full bg-white/10 px-10 py-3 font-semibold text-white transition hover:bg-white/20 disabled:opacity-50 disabled:hover:bg-white/10"
           >
-            Start Session
+            Configure Tool Calls
           </button>
         </div>
       </div>

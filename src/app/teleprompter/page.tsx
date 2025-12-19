@@ -8,6 +8,7 @@ import { ControlBar } from "@/app/_components/teleprompter/control-bar";
 import { AudioCapture } from "@/app/_components/teleprompter/audio-capture";
 import { FastWordMatcher } from "@/utils/fast-word-matcher";
 import { useAIToolCalling } from "@/hooks/use-ai-tool-calling";
+import { useUrlQueue } from "@/hooks/use-url-queue";
 
 const STORAGE_KEYS = {
   SCRIPT_TEXT: "teleprompter_script",
@@ -65,6 +66,11 @@ export default function TeleprompterPage() {
   const handleBackToEdit = () => {
     setIsRecording(false);
     router.push("/");
+  };
+
+  const handleGoToConfig = () => {
+    setIsRecording(false);
+    router.push("/config");
   };
 
   const handleToggleRecording = () => {
@@ -138,6 +144,12 @@ export default function TeleprompterPage() {
     []
   );
 
+  // Handle URL triggers (both from AI and configured URLs)
+  const handleUrlTrigger = useCallback((url: string, relevance: string, category: string) => {
+    setBrowserUrl(url);
+    console.log(`[URL Trigger] Opening ${category}:`, url, "-", relevance);
+  }, []);
+
   // AI tool calling - automatically open browser when context warrants
   // Triggers on sentence completion (non-blocking)
   useAIToolCalling({
@@ -145,11 +157,16 @@ export default function TeleprompterPage() {
     currentWordIndex,
     recentTranscript,
     completedSentence,
-    onToolCall: (url, relevance, category) => {
-      setBrowserUrl(url);
-      console.log(`[AI] Opening ${category}:`, url, "-", relevance);
-    },
+    onToolCall: handleUrlTrigger,
     enabled: isRecording,
+  });
+
+  // URL queue - configured URLs that trigger based on passages or phrases
+  const { triggerNextInQueue, hasNextInQueue, queueIndex, totalInQueue } = useUrlQueue({
+    currentWordIndex,
+    recentTranscript,
+    enabled: isRecording,
+    onUrlTrigger: handleUrlTrigger,
   });
 
   // Show loading state while checking for script
@@ -197,10 +214,14 @@ export default function TeleprompterPage() {
         onToggleRecording={handleToggleRecording}
         onReset={handleReset}
         onBackToEdit={handleBackToEdit}
+        onGoToConfig={handleGoToConfig}
         currentWordIndex={currentWordIndex}
         onManualAdvance={handleManualAdvance}
         onManualRewind={handleManualRewind}
         connectionStatus={connectionStatus}
+        onNextUrl={triggerNextInQueue}
+        hasNextUrl={hasNextInQueue}
+        queueInfo={totalInQueue > 0 ? `Queue: ${queueIndex + 1}/${totalInQueue}` : undefined}
       />
     </>
   );
