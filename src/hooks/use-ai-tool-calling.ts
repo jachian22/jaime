@@ -95,12 +95,12 @@ export function useAIToolCalling({
                 // Check for tool calls in the stream (AI SDK 5 format: tool-input-available)
                 if (parsed.type === "tool-input-available") {
                   if (parsed.toolName === "openWebpage") {
-                    const { url, relevance, category } = parsed.input;
+                    const { url, relevance, category } = parsed.input as { url: string; relevance: string; category: string };
                     console.log("[AI Tool Call]", { url, relevance, category });
                     onToolCall(url, relevance, category);
                   }
                 }
-              } catch (e) {
+              } catch {
                 // Ignore JSON parse errors for non-JSON lines
                 console.debug("Ignoring line:", line);
               }
@@ -114,5 +114,5 @@ export function useAIToolCalling({
       .finally(() => {
         processingRef.current = false;
       });
-  }, [completedSentence, scriptText, recentTranscript, onToolCall, enabled]);
+  }, [completedSentence, scriptText, recentTranscript, currentWordIndex, onToolCall, enabled]);
 }

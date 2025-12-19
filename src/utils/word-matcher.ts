@@ -14,7 +14,7 @@ export class WordMatcher {
   private currentIndex: number;
   private transcriptBuffer: string[] = [];
 
-  constructor(scriptText: string, startIndex: number = 0) {
+  constructor(scriptText: string, startIndex = 0) {
     this.scriptWords = scriptText
       .toLowerCase()
       .split(/\s+/)
