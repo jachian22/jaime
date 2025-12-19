@@ -14,7 +14,7 @@ export class WordMatcher {
   private currentIndex: number;
   private transcriptBuffer: string[] = [];
 
-  constructor(scriptText: string, startIndex: number = 0) {
+  constructor(scriptText: string, startIndex = 0) {
     this.scriptWords = scriptText
       .toLowerCase()
       .split(/\s+/)
@@ -84,7 +84,9 @@ export class WordMatcher {
     const maxLen = Math.max(arr1.length, arr2.length);
 
     for (let i = 0; i < Math.min(arr1.length, arr2.length); i++) {
-      if (this.wordsMatch(arr1[i], arr2[i])) {
+      const word1 = arr1[i];
+      const word2 = arr2[i];
+      if (word1 && word2 && this.wordsMatch(word1, word2)) {
         matches++;
       }
     }

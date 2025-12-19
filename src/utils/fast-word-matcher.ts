@@ -3,17 +3,12 @@
  * Uses exact matching with sequential assumption for <200ms latency
  */
 
-interface MatchResult {
-  matched: boolean;
-  newIndex: number;
-}
-
 export class FastWordMatcher {
   private scriptWords: string[];
   private currentIndex: number;
-  private lastWord: string = '';
+  private lastWord = '';
 
-  constructor(scriptText: string, startIndex: number = 0) {
+  constructor(scriptText: string, startIndex = 0) {
     // Preprocess: lowercase + strip punctuation for fast comparison
     this.scriptWords = scriptText
       .toLowerCase()
@@ -86,7 +81,7 @@ export class FastWordMatcher {
     if (matchIndex !== null) {
       // Update position to end of matched phrase
       this.currentIndex = matchIndex + cleanWords.length;
-      this.lastWord = cleanWords[cleanWords.length - 1] || '';
+      this.lastWord = cleanWords[cleanWords.length - 1] ?? '';
       return this.currentIndex;
     }
 

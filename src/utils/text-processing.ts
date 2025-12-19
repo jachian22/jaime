@@ -16,7 +16,7 @@ export function tokenizeIntoSentences(text: string): SentenceToken[] {
   // Split by sentence-ending punctuation (., !, ?)
   // Keep the punctuation with the sentence
   const sentenceRegex = /[^.!?]+[.!?]+/g;
-  const sentences = text.match(sentenceRegex) || [text];
+  const sentences = text.match(sentenceRegex) ?? [text];
 
   const result: SentenceToken[] = [];
   let currentWordIndex = 0;

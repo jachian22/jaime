@@ -5,7 +5,8 @@ import { env } from "@/env";
 
 export async function POST(req: Request) {
   try {
-    const { scriptText, currentPosition, recentTranscript } = await req.json();
+    const body = await req.json() as { scriptText: string; currentPosition: number; recentTranscript: string };
+    const { scriptText, currentPosition, recentTranscript } = body;
 
     // Get a window of text around the current position
     const contextStart = Math.max(0, currentPosition - 100);
@@ -41,7 +42,6 @@ export async function POST(req: Request) {
       // searchWeb,  // Uncomment when implementing Option 3
     },
     toolChoice: "auto",
-    maxSteps: 2, // Allow AI to make tool calls
     prompt: `You are helping with a voice-aware teleprompter. The user is reading a script and you should identify when opening relevant webpages would be helpful.
 
 Current script excerpt:
