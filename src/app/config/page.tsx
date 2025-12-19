@@ -18,15 +18,16 @@ export default function ConfigPage() {
   // URL configuration state
   const [passageUrls, setPassageUrls] = useState<PassageBasedUrl[]>([]);
   const [standaloneUrls, setStandaloneUrls] = useState<StandaloneUrl[]>([]);
-  const [queue, setQueue] = useState<string[]>([]);
 
   // UI state
   const [showUrlDialog, setShowUrlDialog] = useState(false);
   const [showStandaloneDialog, setShowStandaloneDialog] = useState(false);
-  const [currentUrl, setCurrentUrl] = useState("");
-  const [currentCategory, setCurrentCategory] = useState<"documentation" | "tutorial" | "reference" | "article">("documentation");
-  const [currentRelevance, setCurrentRelevance] = useState("");
-  const [currentTriggerPhrase, setCurrentTriggerPhrase] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [currentUrl, setCurrentUrl] = useState<string>("");
+  const [currentTitle, setCurrentTitle] = useState<string>("");
+  const [currentRelevance, setCurrentRelevance] = useState<string>("");
+  const [currentTriggerPhrase, setCurrentTriggerPhrase] = useState<string>("");
+  const [currentSelectedText, setCurrentSelectedText] = useState<string>("");
 
   // Load script from localStorage
   useEffect(() => {
@@ -41,32 +42,33 @@ export default function ConfigPage() {
     const savedConfig = localStorage.getItem(CONFIG_STORAGE_KEY);
     if (savedConfig) {
       const config = JSON.parse(savedConfig) as UrlConfigState;
-      setPassageUrls(config.passageUrls);
-      setStandaloneUrls(config.standaloneUrls);
-      setQueue(config.queue);
+      setPassageUrls(config.passageUrls ?? []);
+      setStandaloneUrls(config.standaloneUrls ?? []);
     }
   }, [router]);
 
   // Save config to localStorage
   useEffect(() => {
-    if (passageUrls.length > 0 || standaloneUrls.length > 0 || queue.length > 0) {
+    if (passageUrls.length > 0 || standaloneUrls.length > 0) {
       const config: UrlConfigState = {
         passageUrls,
-        standaloneUrls,
-        queue
+        standaloneUrls
       };
       localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
     }
-  }, [passageUrls, standaloneUrls, queue]);
+  }, [passageUrls, standaloneUrls]);
 
   const handleCaptureSelection = () => {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0 || !scriptText) return;
 
     const range = selection.getRangeAt(0);
-    const selectedText = range.toString();
+    const selectedText = range.toString().trim();
 
-    if (!selectedText.trim()) return;
+    if (!selectedText) return;
+
+    // Store the selected text
+    setCurrentSelectedText(selectedText);
 
     // Get character positions
     const startOffset = range.startOffset;
@@ -100,100 +102,188 @@ export default function ConfigPage() {
 
     setSelectionStart(wordStartIndex);
     setSelectionEnd(wordEndIndex);
+    return { wordStartIndex, wordEndIndex, selectedText };
   };
 
   const handleAddPassageUrl = () => {
-    handleCaptureSelection();
-    if (selectionStart === null || selectionEnd === null) return;
+    const result = handleCaptureSelection();
+    if (!result) return;
+    setEditingId(null); // Clear editing mode
     setShowUrlDialog(true);
   };
 
+  const handleEditUrl = (urlConfig: PassageBasedUrl | StandaloneUrl) => {
+    setEditingId(urlConfig.id);
+    setCurrentUrl(urlConfig.url || "");
+    setCurrentTitle(urlConfig.title || "");
+    setCurrentRelevance(urlConfig.relevance || "");
+
+    if (urlConfig.type === 'passage') {
+      setCurrentSelectedText(urlConfig.selectedText || "");
+      setSelectionStart(urlConfig.startWordIndex);
+      setSelectionEnd(urlConfig.endWordIndex);
+      setShowUrlDialog(true);
+    } else {
+      setCurrentTriggerPhrase(urlConfig.triggerPhrase || "");
+      setShowStandaloneDialog(true);
+    }
+  };
+
   const handleSavePassageUrl = () => {
-    if (selectionStart === null || selectionEnd === null || !currentUrl) return;
+    if (selectionStart === null || selectionEnd === null || !currentUrl || !currentTitle) return;
 
     const start = Math.min(selectionStart, selectionEnd);
     const end = Math.max(selectionStart, selectionEnd);
 
-    const newUrl: PassageBasedUrl = {
-      id: crypto.randomUUID(),
-      type: 'passage',
-      startWordIndex: start,
-      endWordIndex: end,
-      url: currentUrl,
-      category: currentCategory,
-      relevance: currentRelevance
-    };
+    if (editingId) {
+      // Update existing URL
+      setPassageUrls(passageUrls.map(u =>
+        u.id === editingId
+          ? {
+              ...u,
+              startWordIndex: start,
+              endWordIndex: end,
+              selectedText: currentSelectedText,
+              url: currentUrl,
+              title: currentTitle,
+              relevance: currentRelevance
+            }
+          : u
+      ));
+    } else {
+      // Add new URL
+      const newUrl: PassageBasedUrl = {
+        id: crypto.randomUUID(),
+        type: 'passage',
+        startWordIndex: start,
+        endWordIndex: end,
+        selectedText: currentSelectedText,
+        url: currentUrl,
+        title: currentTitle,
+        relevance: currentRelevance
+      };
 
-    setPassageUrls([...passageUrls, newUrl]);
-    setQueue([...queue, newUrl.id]);
+      setPassageUrls([...passageUrls, newUrl]);
+    }
 
     // Reset
+    resetDialog();
+  };
+
+  const resetDialog = () => {
     setSelectionStart(null);
     setSelectionEnd(null);
     setShowUrlDialog(false);
+    setShowStandaloneDialog(false);
+    setEditingId(null);
     setCurrentUrl("");
+    setCurrentTitle("");
     setCurrentRelevance("");
+    setCurrentTriggerPhrase("");
+    setCurrentSelectedText("");
+    window.getSelection()?.removeAllRanges();
   };
 
   const handleSaveStandaloneUrl = () => {
-    if (!currentUrl || !currentTriggerPhrase) return;
+    if (!currentUrl || !currentTriggerPhrase || !currentTitle) return;
 
-    const newUrl: StandaloneUrl = {
-      id: crypto.randomUUID(),
-      type: 'standalone',
-      triggerPhrase: currentTriggerPhrase,
-      url: currentUrl,
-      category: currentCategory,
-      relevance: currentRelevance
-    };
+    if (editingId) {
+      // Update existing URL
+      setStandaloneUrls(standaloneUrls.map(u =>
+        u.id === editingId
+          ? {
+              ...u,
+              triggerPhrase: currentTriggerPhrase,
+              url: currentUrl,
+              title: currentTitle,
+              relevance: currentRelevance
+            }
+          : u
+      ));
+    } else {
+      // Add new URL with next order number
+      const maxOrder = standaloneUrls.reduce((max, u) => Math.max(max, u.order), -1);
+      const newUrl: StandaloneUrl = {
+        id: crypto.randomUUID(),
+        type: 'standalone',
+        triggerPhrase: currentTriggerPhrase,
+        url: currentUrl,
+        title: currentTitle,
+        relevance: currentRelevance,
+        order: maxOrder + 1
+      };
 
-    setStandaloneUrls([...standaloneUrls, newUrl]);
-    setQueue([...queue, newUrl.id]);
+      setStandaloneUrls([...standaloneUrls, newUrl]);
+    }
 
     // Reset
-    setShowStandaloneDialog(false);
-    setCurrentUrl("");
-    setCurrentRelevance("");
-    setCurrentTriggerPhrase("");
+    resetDialog();
   };
 
   const handleRemoveUrl = (id: string) => {
     setPassageUrls(passageUrls.filter(u => u.id !== id));
     setStandaloneUrls(standaloneUrls.filter(u => u.id !== id));
-    setQueue(queue.filter(qId => qId !== id));
   };
 
-  const handleReorderQueue = (id: string, direction: 'up' | 'down') => {
-    const currentIndex = queue.indexOf(id);
-    if (currentIndex === -1) return;
+  // Drag and drop handlers for standalone URLs
+  const handleDragStart = (e: React.DragEvent, url: StandaloneUrl) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', url.id);
+  };
 
-    const newQueue = [...queue];
-    if (direction === 'up' && currentIndex > 0) {
-      [newQueue[currentIndex - 1], newQueue[currentIndex]] = [newQueue[currentIndex]!, newQueue[currentIndex - 1]!];
-    } else if (direction === 'down' && currentIndex < newQueue.length - 1) {
-      [newQueue[currentIndex], newQueue[currentIndex + 1]] = [newQueue[currentIndex + 1]!, newQueue[currentIndex]!];
-    }
-    setQueue(newQueue);
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent, targetUrl: StandaloneUrl) => {
+    e.preventDefault();
+    const draggedId = e.dataTransfer.getData('text/plain');
+
+    if (draggedId === targetUrl.id) return;
+
+    const draggedUrl = standaloneUrls.find(u => u.id === draggedId);
+    if (!draggedUrl) return;
+
+    // Swap order values
+    const newStandaloneUrls = standaloneUrls.map(u => {
+      if (u.id === draggedId) {
+        return { ...u, order: targetUrl.order };
+      }
+      if (u.id === targetUrl.id) {
+        return { ...u, order: draggedUrl.order };
+      }
+      return u;
+    });
+
+    setStandaloneUrls(newStandaloneUrls);
   };
 
   const loadTestData = () => {
+    // Get first 10 words and words 20-30 from script for testing
+    const words = scriptText.split(/\s+/).filter(w => w.length > 0);
+    const firstSelection = words.slice(0, Math.min(10, words.length)).join(' ');
+    const secondSelection = words.slice(20, Math.min(30, words.length)).join(' ');
+
     const testPassageUrls: PassageBasedUrl[] = [
       {
         id: "test-1",
         type: "passage",
         startWordIndex: 0,
-        endWordIndex: 10,
+        endWordIndex: 9,
+        selectedText: firstSelection,
         url: "https://react.dev",
-        category: "documentation",
+        title: "React Documentation",
         relevance: "React official documentation"
       },
       {
         id: "test-2",
         type: "passage",
         startWordIndex: 20,
-        endWordIndex: 30,
+        endWordIndex: 29,
+        selectedText: secondSelection,
         url: "https://nextjs.org/docs",
-        category: "documentation",
+        title: "Next.js Documentation",
         relevance: "Next.js documentation"
       }
     ];
@@ -204,38 +294,39 @@ export default function ConfigPage() {
         type: "standalone",
         triggerPhrase: "typescript",
         url: "https://www.typescriptlang.org/docs/",
-        category: "documentation",
-        relevance: "TypeScript documentation"
+        title: "TypeScript Docs",
+        relevance: "TypeScript documentation",
+        order: 0
       },
       {
         id: "test-4",
         type: "standalone",
         triggerPhrase: "tailwind",
         url: "https://tailwindcss.com/docs",
-        category: "documentation",
-        relevance: "Tailwind CSS documentation"
+        title: "Tailwind CSS Docs",
+        relevance: "Tailwind CSS documentation",
+        order: 1
       }
     ];
 
-    const testQueue = ["test-1", "test-2", "test-3", "test-4"];
-
     setPassageUrls(testPassageUrls);
     setStandaloneUrls(testStandaloneUrls);
-    setQueue(testQueue);
   };
 
   const startTeleprompter = () => {
     const config: UrlConfigState = {
       passageUrls,
-      standaloneUrls,
-      queue
+      standaloneUrls
     };
     localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
     router.push("/teleprompter");
   };
 
-  const allUrls = [...passageUrls, ...standaloneUrls];
-  const queuedUrls = queue.map(id => allUrls.find(u => u.id === id)).filter(Boolean);
+  // Sort passage URLs by their position in the script
+  const sortedPassageUrls = [...passageUrls].sort((a, b) => a.startWordIndex - b.startWordIndex);
+
+  // Sort standalone URLs by their order field
+  const sortedStandaloneUrls = [...standaloneUrls].sort((a, b) => a.order - b.order);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-black to-zinc-900">
@@ -309,101 +400,154 @@ export default function ConfigPage() {
         </div>
 
         {/* URL Queue Panel */}
-        <div className="w-96 border-l border-white/10 bg-black/40 p-6">
+        <div className="w-96 border-l border-white/10 bg-black/40 p-6 overflow-y-auto">
           <h2 className="mb-4 text-xl font-bold text-white">URL Queue</h2>
 
-          {queuedUrls.length === 0 ? (
+          {sortedPassageUrls.length === 0 && sortedStandaloneUrls.length === 0 ? (
             <p className="text-sm text-white/50">No URLs configured yet</p>
           ) : (
-            <div className="space-y-3">
-              {queuedUrls.map((urlConfig, index) => {
-                if (!urlConfig) return null;
-
-                return (
-                  <div key={urlConfig.id} className="rounded-lg bg-white/5 p-4">
-                    <div className="mb-2 flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="mb-1 flex items-center gap-2">
-                          <span className="text-xs font-semibold text-purple-400">
-                            {urlConfig.category.toUpperCase()}
-                          </span>
-                          <span className="text-xs text-white/40">#{index + 1}</span>
-                        </div>
-                        {urlConfig.type === 'passage' ? (
-                          <p className="text-xs text-white/60">
-                            Words {urlConfig.startWordIndex}-{urlConfig.endWordIndex}
+            <div className="space-y-6">
+              {/* Passage-Based URLs (Non-Draggable) */}
+              {sortedPassageUrls.length > 0 && (
+                <div>
+                  <h3 className="mb-3 text-sm font-semibold text-white/60">Script Passages</h3>
+                  <div className="space-y-3">
+                    {sortedPassageUrls.map((urlConfig) => (
+                      <div key={urlConfig.id} className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-4">
+                        <div className="mb-2">
+                          <div className="mb-1 flex items-center gap-2">
+                            <span className="text-xs font-semibold text-blue-400">
+                              {urlConfig.title}
+                            </span>
+                          </div>
+                          <p className="text-xs text-white/80 italic mb-1">
+                            &quot;{urlConfig.selectedText}&quot;
                           </p>
-                        ) : (
-                          <p className="text-xs text-white/60">
+                          <p className="text-xs text-white/40">
+                            (words {urlConfig.startWordIndex}-{urlConfig.endWordIndex})
+                          </p>
+                          <p className="mt-2 text-sm text-white break-all">{urlConfig.url}</p>
+                          {urlConfig.relevance && (
+                            <p className="mt-1 text-xs text-white/50">{urlConfig.relevance}</p>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleEditUrl(urlConfig)}
+                            className="text-xs text-blue-400 hover:text-blue-300"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleRemoveUrl(urlConfig.id)}
+                            className="text-xs text-red-400 hover:text-red-300"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Standalone URLs (Draggable) */}
+              {sortedStandaloneUrls.length > 0 && (
+                <div>
+                  <h3 className="mb-3 text-sm font-semibold text-white/60">
+                    Optional Keywords <span className="text-xs text-white/40">(drag to reorder)</span>
+                  </h3>
+                  <div className="space-y-3">
+                    {sortedStandaloneUrls.map((urlConfig) => (
+                      <div
+                        key={urlConfig.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, urlConfig)}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, urlConfig)}
+                        className="rounded-lg bg-green-500/10 border border-green-500/20 p-4 cursor-move hover:bg-green-500/20 transition"
+                      >
+                        <div className="mb-2">
+                          <div className="mb-1 flex items-center gap-2">
+                            <span className="text-xs font-semibold text-green-400">
+                              {urlConfig.title}
+                            </span>
+                            <span className="text-xs text-white/40">⋮⋮</span>
+                          </div>
+                          <p className="text-xs text-white/60 mb-1">
                             Trigger: &quot;{urlConfig.triggerPhrase}&quot;
                           </p>
-                        )}
-                        <p className="mt-1 text-sm text-white">{urlConfig.url}</p>
-                        {urlConfig.relevance && (
-                          <p className="mt-1 text-xs text-white/50">{urlConfig.relevance}</p>
-                        )}
+                          <p className="mt-2 text-sm text-white break-all">{urlConfig.url}</p>
+                          {urlConfig.relevance && (
+                            <p className="mt-1 text-xs text-white/50">{urlConfig.relevance}</p>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleEditUrl(urlConfig)}
+                            className="text-xs text-green-400 hover:text-green-300"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleRemoveUrl(urlConfig.id)}
+                            className="text-xs text-red-400 hover:text-red-300"
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex flex-col gap-1">
-                        <button
-                          onClick={() => handleReorderQueue(urlConfig.id, 'up')}
-                          disabled={index === 0}
-                          className="text-white/50 hover:text-white disabled:opacity-30"
-                        >
-                          ↑
-                        </button>
-                        <button
-                          onClick={() => handleReorderQueue(urlConfig.id, 'down')}
-                          disabled={index === queuedUrls.length - 1}
-                          className="text-white/50 hover:text-white disabled:opacity-30"
-                        >
-                          ↓
-                        </button>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleRemoveUrl(urlConfig.id)}
-                      className="text-xs text-red-400 hover:text-red-300"
-                    >
-                      Remove
-                    </button>
+                    ))}
                   </div>
-                );
-              })}
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Add Passage URL Dialog */}
+      {/* Add/Edit Passage URL Dialog */}
       {showUrlDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
           <div className="w-full max-w-lg rounded-xl bg-zinc-900 p-6">
-            <h3 className="mb-4 text-xl font-bold text-white">Add URL for Selected Passage</h3>
+            <h3 className="mb-4 text-xl font-bold text-white">
+              {editingId ? 'Edit URL for Passage' : 'Add URL for Selected Passage'}
+            </h3>
 
             <div className="space-y-4">
+              {currentSelectedText && (
+                <div className="rounded-lg bg-white/5 p-3">
+                  <p className="text-xs text-white/60 mb-1">Selected text:</p>
+                  <p className="text-sm text-white/80 italic">&quot;{currentSelectedText}&quot;</p>
+                </div>
+              )}
+
               <div>
-                <label className="mb-2 block text-sm font-medium text-white/80">URL</label>
+                <label className="mb-2 block text-sm font-medium text-white/80">
+                  Title <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={currentTitle}
+                  onChange={(e) => setCurrentTitle(e.target.value)}
+                  placeholder="e.g., React Hooks Documentation"
+                  className="w-full rounded-lg bg-white/10 px-4 py-2 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-white/80">
+                  URL <span className="text-red-400">*</span>
+                </label>
                 <input
                   type="url"
                   value={currentUrl}
                   onChange={(e) => setCurrentUrl(e.target.value)}
                   placeholder="https://..."
-                  className="w-full rounded-lg bg-white/10 px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full rounded-lg bg-white/10 px-4 py-2 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  required
                 />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-white/80">Category</label>
-                <select
-                  value={currentCategory}
-                  onChange={(e) => setCurrentCategory(e.target.value as typeof currentCategory)}
-                  className="w-full rounded-lg bg-white/10 px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                >
-                  <option value="documentation">Documentation</option>
-                  <option value="tutorial">Tutorial</option>
-                  <option value="reference">Reference</option>
-                  <option value="article">Article</option>
-                </select>
               </div>
 
               <div>
@@ -414,7 +558,7 @@ export default function ConfigPage() {
                   value={currentRelevance}
                   onChange={(e) => setCurrentRelevance(e.target.value)}
                   placeholder="Why is this URL relevant?"
-                  className="w-full rounded-lg bg-white/10 px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full rounded-lg bg-white/10 px-4 py-2 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-purple-500"
                   rows={3}
                 />
               </div>
@@ -422,16 +566,13 @@ export default function ConfigPage() {
               <div className="flex gap-3">
                 <button
                   onClick={handleSavePassageUrl}
-                  className="flex-1 rounded-full bg-purple-600 px-6 py-2 font-semibold text-white transition hover:bg-purple-700"
+                  disabled={!currentTitle || !currentUrl}
+                  className="flex-1 rounded-full bg-purple-600 px-6 py-2 font-semibold text-white transition hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Save
+                  {editingId ? 'Update' : 'Save'}
                 </button>
                 <button
-                  onClick={() => {
-                    setShowUrlDialog(false);
-                    setCurrentUrl("");
-                    setCurrentRelevance("");
-                  }}
+                  onClick={resetDialog}
                   className="flex-1 rounded-full bg-white/10 px-6 py-2 font-semibold text-white transition hover:bg-white/20"
                 >
                   Cancel
@@ -442,49 +583,55 @@ export default function ConfigPage() {
         </div>
       )}
 
-      {/* Add Standalone URL Dialog */}
+      {/* Add/Edit Standalone URL Dialog */}
       {showStandaloneDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
           <div className="w-full max-w-lg rounded-xl bg-zinc-900 p-6">
-            <h3 className="mb-4 text-xl font-bold text-white">Add Standalone URL</h3>
+            <h3 className="mb-4 text-xl font-bold text-white">
+              {editingId ? 'Edit Standalone URL' : 'Add Standalone URL'}
+            </h3>
 
             <div className="space-y-4">
               <div>
                 <label className="mb-2 block text-sm font-medium text-white/80">
-                  Trigger Phrase
+                  Title <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={currentTitle}
+                  onChange={(e) => setCurrentTitle(e.target.value)}
+                  placeholder="e.g., TypeScript Documentation"
+                  className="w-full rounded-lg bg-white/10 px-4 py-2 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-white/80">
+                  Trigger Phrase <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="text"
                   value={currentTriggerPhrase}
                   onChange={(e) => setCurrentTriggerPhrase(e.target.value)}
-                  placeholder="Phrase that triggers this URL"
-                  className="w-full rounded-lg bg-white/10 px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder="e.g., typescript"
+                  className="w-full rounded-lg bg-white/10 px-4 py-2 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  required
                 />
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium text-white/80">URL</label>
+                <label className="mb-2 block text-sm font-medium text-white/80">
+                  URL <span className="text-red-400">*</span>
+                </label>
                 <input
                   type="url"
                   value={currentUrl}
                   onChange={(e) => setCurrentUrl(e.target.value)}
                   placeholder="https://..."
-                  className="w-full rounded-lg bg-white/10 px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full rounded-lg bg-white/10 px-4 py-2 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  required
                 />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-white/80">Category</label>
-                <select
-                  value={currentCategory}
-                  onChange={(e) => setCurrentCategory(e.target.value as typeof currentCategory)}
-                  className="w-full rounded-lg bg-white/10 px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                >
-                  <option value="documentation">Documentation</option>
-                  <option value="tutorial">Tutorial</option>
-                  <option value="reference">Reference</option>
-                  <option value="article">Article</option>
-                </select>
               </div>
 
               <div>
@@ -495,7 +642,7 @@ export default function ConfigPage() {
                   value={currentRelevance}
                   onChange={(e) => setCurrentRelevance(e.target.value)}
                   placeholder="Why is this URL relevant?"
-                  className="w-full rounded-lg bg-white/10 px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full rounded-lg bg-white/10 px-4 py-2 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-green-500"
                   rows={3}
                 />
               </div>
@@ -503,17 +650,13 @@ export default function ConfigPage() {
               <div className="flex gap-3">
                 <button
                   onClick={handleSaveStandaloneUrl}
-                  className="flex-1 rounded-full bg-green-600 px-6 py-2 font-semibold text-white transition hover:bg-green-700"
+                  disabled={!currentTitle || !currentUrl || !currentTriggerPhrase}
+                  className="flex-1 rounded-full bg-green-600 px-6 py-2 font-semibold text-white transition hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Save
+                  {editingId ? 'Update' : 'Save'}
                 </button>
                 <button
-                  onClick={() => {
-                    setShowStandaloneDialog(false);
-                    setCurrentUrl("");
-                    setCurrentRelevance("");
-                    setCurrentTriggerPhrase("");
-                  }}
+                  onClick={resetDialog}
                   className="flex-1 rounded-full bg-white/10 px-6 py-2 font-semibold text-white transition hover:bg-white/20"
                 >
                   Cancel

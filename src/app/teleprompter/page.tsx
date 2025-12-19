@@ -145,9 +145,9 @@ export default function TeleprompterPage() {
   );
 
   // Handle URL triggers (both from AI and configured URLs)
-  const handleUrlTrigger = useCallback((url: string, relevance: string, category: string) => {
+  const handleUrlTrigger = useCallback((url: string, relevance: string, title: string) => {
     setBrowserUrl(url);
-    console.log(`[URL Trigger] Opening ${category}:`, url, "-", relevance);
+    console.log(`[URL Trigger] Opening ${title}:`, url, "-", relevance);
   }, []);
 
   // AI tool calling - automatically open browser when context warrants

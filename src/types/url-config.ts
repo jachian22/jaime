@@ -7,10 +7,10 @@ export interface PassageBasedUrl {
   type: 'passage';
   startWordIndex: number;
   endWordIndex: number;
+  selectedText: string; // The actual text that was selected
   url: string;
-  category: 'documentation' | 'tutorial' | 'reference' | 'article';
+  title: string; // User-defined title for this URL
   relevance: string;
-  queuePosition?: number;
 }
 
 export interface StandaloneUrl {
@@ -18,9 +18,9 @@ export interface StandaloneUrl {
   type: 'standalone';
   triggerPhrase: string; // Phrase that triggers this URL (not necessarily in script)
   url: string;
-  category: 'documentation' | 'tutorial' | 'reference' | 'article';
+  title: string; // User-defined title for this URL
   relevance: string;
-  queuePosition?: number;
+  order: number; // Manual ordering for drag-and-drop
 }
 
 export type UrlConfig = PassageBasedUrl | StandaloneUrl;
@@ -28,5 +28,4 @@ export type UrlConfig = PassageBasedUrl | StandaloneUrl;
 export interface UrlConfigState {
   passageUrls: PassageBasedUrl[];
   standaloneUrls: StandaloneUrl[];
-  queue: string[]; // Array of IDs in order they should be opened
 }
