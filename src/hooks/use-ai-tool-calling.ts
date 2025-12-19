@@ -89,13 +89,17 @@ export function useAIToolCalling({
               }
 
               try {
-                const parsed = JSON.parse(data);
+                const parsed = JSON.parse(data) as {
+                  type: string;
+                  toolName?: string;
+                  input?: { url: string; relevance: string; category: string };
+                };
                 console.log("[AI Stream Data]", parsed); // Debug: see what we're receiving
 
                 // Check for tool calls in the stream (AI SDK 5 format: tool-input-available)
                 if (parsed.type === "tool-input-available") {
-                  if (parsed.toolName === "openWebpage") {
-                    const { url, relevance, category } = parsed.input as { url: string; relevance: string; category: string };
+                  if (parsed.toolName === "openWebpage" && parsed.input) {
+                    const { url, relevance, category } = parsed.input;
                     console.log("[AI Tool Call]", { url, relevance, category });
                     onToolCall(url, relevance, category);
                   }
