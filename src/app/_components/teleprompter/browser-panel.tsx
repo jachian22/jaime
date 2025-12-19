@@ -1,15 +1,18 @@
 "use client";
 
+import type { WebpageDisplaySettings } from "@/types/url-config";
+
 interface BrowserPanelProps {
   url: string;
   onClose: () => void;
+  displaySettings: WebpageDisplaySettings;
 }
 
 export function BrowserPanel({ url, onClose }: BrowserPanelProps) {
   return (
-    <div className="flex h-full min-h-screen flex-col bg-gradient-to-b from-[#1a0140] to-[#0a0a15]">
+    <div className="flex h-full flex-col bg-gradient-to-b from-[#1a0140] to-[#0a0a15]">
       {/* Header with close button */}
-      <div className="flex items-center justify-between border-b border-white/10 bg-white/5 p-3">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-white/5 p-3">
         <div className="flex-1 truncate text-sm text-white/60">{url}</div>
         <button
           onClick={onClose}

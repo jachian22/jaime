@@ -9,10 +9,12 @@ import { AudioCapture } from "@/app/_components/teleprompter/audio-capture";
 import { FastWordMatcher } from "@/utils/fast-word-matcher";
 import { useAIToolCalling } from "@/hooks/use-ai-tool-calling";
 import { useUrlQueue } from "@/hooks/use-url-queue";
+import type { UrlConfigState, WebpageDisplaySettings } from "@/types/url-config";
 
 const STORAGE_KEYS = {
   SCRIPT_TEXT: "teleprompter_script",
   CURRENT_INDEX: "teleprompter_index",
+  URL_CONFIG: "teleprompter_url_config",
 };
 
 export default function TeleprompterPage() {
@@ -25,13 +27,21 @@ export default function TeleprompterPage() {
   const [recentTranscript, setRecentTranscript] = useState("");
   const [completedSentence, setCompletedSentence] = useState<string>("");
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'ready' | 'closed'>('closed');
+  const [displaySettings, setDisplaySettings] = useState<WebpageDisplaySettings>({
+    holdTime: 2,
+    scrollSpeed: 50,
+    splitPercentage: 50
+  });
+  const [isFirstReveal, setIsFirstReveal] = useState(true);
+  const [hasConfiguredUrls, setHasConfiguredUrls] = useState(false);
   const matcherRef = useRef<FastWordMatcher | null>(null);
   const sentenceBufferRef = useRef<string>("");
 
-  // Load script and current index on mount
+  // Load script, current index, and display settings on mount
   useEffect(() => {
     const savedScript = localStorage.getItem(STORAGE_KEYS.SCRIPT_TEXT);
     const savedIndex = sessionStorage.getItem(STORAGE_KEYS.CURRENT_INDEX);
+    const savedConfig = localStorage.getItem(STORAGE_KEYS.URL_CONFIG);
 
     if (!savedScript) {
       // No script found, redirect to home
@@ -43,6 +53,23 @@ export default function TeleprompterPage() {
     if (savedIndex) {
       setCurrentWordIndex(parseInt(savedIndex, 10));
     }
+
+    // Load display settings from config and check if URLs are configured
+    if (savedConfig) {
+      try {
+        const config = JSON.parse(savedConfig) as UrlConfigState;
+        setDisplaySettings(config.displaySettings);
+
+        // Check if any URL cards are configured
+        const hasUrls = (config.passageUrls?.length ?? 0) > 0 || (config.standaloneUrls?.length ?? 0) > 0;
+        setHasConfiguredUrls(hasUrls);
+
+        console.log(`[URL Config] Found ${config.passageUrls?.length ?? 0} passage URLs and ${config.standaloneUrls?.length ?? 0} standalone URLs. AI tool calling ${hasUrls ? 'DISABLED' : 'ENABLED'}`);
+      } catch (error) {
+        console.error("Failed to parse URL config:", error);
+      }
+    }
+
     setIsLoading(false);
   }, [router]);
 
@@ -148,9 +175,16 @@ export default function TeleprompterPage() {
   const handleUrlTrigger = useCallback((url: string, relevance: string, title: string) => {
     setBrowserUrl(url);
     console.log(`[URL Trigger] Opening ${title}:`, url, "-", relevance);
+
+    // Mark that we've revealed the browser for the first time
+    // This will reset isFirstReveal to false after the animation
+    setTimeout(() => {
+      setIsFirstReveal(false);
+    }, 2000); // Match animation duration
   }, []);
 
   // AI tool calling - automatically open browser when context warrants
+  // Only enabled when NO manual URL cards are configured (manual cards take priority)
   // Triggers on sentence completion (non-blocking)
   useAIToolCalling({
     scriptText,
@@ -158,7 +192,7 @@ export default function TeleprompterPage() {
     recentTranscript,
     completedSentence,
     onToolCall: handleUrlTrigger,
-    enabled: isRecording,
+    enabled: isRecording && !hasConfiguredUrls,
   });
 
   // URL queue - configured URLs that trigger based on passages or phrases
@@ -178,27 +212,41 @@ export default function TeleprompterPage() {
     );
   }
 
+  // Calculate dynamic widths based on split percentage
+  const teleprompterWidth = browserUrl !== null ? `${100 - displaySettings.splitPercentage}%` : '100%';
+  const browserWidth = `${displaySettings.splitPercentage}%`;
+
   return (
     <>
       {browserUrl === null ? (
         // Fullscreen mode
-        <div className="min-h-screen bg-gradient-to-b from-black to-zinc-900 pb-24">
+        <div className="h-screen overflow-y-auto bg-gradient-to-b from-black to-zinc-900 pb-24">
           <TextViewer
             scriptText={scriptText}
             currentWordIndex={currentWordIndex}
           />
         </div>
       ) : (
-        // Split-screen mode
-        <div className="flex min-h-screen bg-gradient-to-b from-black to-zinc-900 pb-24">
-          <div className="w-1/2 border-r border-white/10">
+        // Split-screen mode with independent scroll containers
+        <div className="flex h-screen bg-gradient-to-b from-black to-zinc-900">
+          <div
+            className="h-full border-r border-white/10"
+            style={{ width: teleprompterWidth }}
+          >
             <TextViewer
               scriptText={scriptText}
               currentWordIndex={currentWordIndex}
             />
           </div>
-          <div className="w-1/2">
-            <BrowserPanel url={browserUrl} onClose={handleCloseBrowser} />
+          <div
+            className={`h-full ${isFirstReveal ? 'animate-slide-in' : ''}`}
+            style={{ width: browserWidth }}
+          >
+            <BrowserPanel
+              url={browserUrl}
+              onClose={handleCloseBrowser}
+              displaySettings={displaySettings}
+            />
           </div>
         </div>
       )}

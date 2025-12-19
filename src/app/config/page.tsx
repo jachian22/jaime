@@ -117,7 +117,12 @@ export default function ConfigPage() {
   const handleAddPassageUrl = () => {
     const result = handleCaptureSelection();
     if (!result) return;
-    setEditingId(null); // Clear editing mode
+
+    // If editingId is set, we're reselecting text for an existing URL
+    // Keep editingId and reopen the dialog with the new selection
+    if (!editingId) {
+      setEditingId(null); // Clear editing mode only if not reselecting
+    }
     setShowUrlDialog(true);
   };
 
@@ -258,27 +263,31 @@ export default function ConfigPage() {
 
     if (draggedId === targetUrl.id) return;
 
-    // Find dragged URL
-    const allUrls = [...passageUrls, ...standaloneUrls];
-    const draggedUrl = allUrls.find(u => u.id === draggedId);
-    if (!draggedUrl) return;
+    // Build combined queue and find indices
+    const combinedQueue = [...passageUrls, ...standaloneUrls].sort((a, b) => a.queuePosition - b.queuePosition);
+    const draggedIndex = combinedQueue.findIndex(u => u.id === draggedId);
+    const targetIndex = combinedQueue.findIndex(u => u.id === targetUrl.id);
 
-    // Swap queue positions
-    const draggedPosition = draggedUrl.queuePosition;
-    const targetPosition = targetUrl.queuePosition;
+    if (draggedIndex === -1 || targetIndex === -1) return;
 
-    // Update both passage and standalone URLs
-    setPassageUrls(passageUrls.map(u => {
-      if (u.id === draggedId) return { ...u, queuePosition: targetPosition };
-      if (u.id === targetUrl.id) return { ...u, queuePosition: draggedPosition };
-      return u;
+    // Reorder: remove dragged item and insert at target position
+    const reordered = [...combinedQueue];
+    const [draggedItem] = reordered.splice(draggedIndex, 1);
+    if (!draggedItem) return;
+    reordered.splice(targetIndex, 0, draggedItem);
+
+    // Reassign queuePosition values sequentially
+    const updatedQueue = reordered.map((item, index) => ({
+      ...item,
+      queuePosition: index
     }));
 
-    setStandaloneUrls(standaloneUrls.map(u => {
-      if (u.id === draggedId) return { ...u, queuePosition: targetPosition };
-      if (u.id === targetUrl.id) return { ...u, queuePosition: draggedPosition };
-      return u;
-    }));
+    // Split back into passage and standalone arrays
+    const newPassageUrls = updatedQueue.filter(u => u.type === 'passage') as PassageBasedUrl[];
+    const newStandaloneUrls = updatedQueue.filter(u => u.type === 'standalone') as StandaloneUrl[];
+
+    setPassageUrls(newPassageUrls);
+    setStandaloneUrls(newStandaloneUrls);
   };
 
   const loadTestData = () => {
@@ -431,35 +440,16 @@ export default function ConfigPage() {
             <h3 className="mb-3 text-sm font-semibold text-white">Webpage Display Settings</h3>
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-xs text-white/70">Hold Time (seconds)</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={displaySettings.holdTime}
-                  onChange={(e) => setDisplaySettings({...displaySettings, holdTime: Number(e.target.value)})}
-                  className="w-full rounded bg-white/10 px-2 py-1 text-sm text-white"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-white/70">Scroll Speed (px/s, 0=no scroll)</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={displaySettings.scrollSpeed}
-                  onChange={(e) => setDisplaySettings({...displaySettings, scrollSpeed: Number(e.target.value)})}
-                  className="w-full rounded bg-white/10 px-2 py-1 text-sm text-white"
-                />
-              </div>
-              <div>
                 <label className="mb-1 block text-xs text-white/70">Webpage Width (%)</label>
                 <input
                   type="number"
-                  min="0"
-                  max="100"
+                  min="10"
+                  max="90"
                   value={displaySettings.splitPercentage}
                   onChange={(e) => setDisplaySettings({...displaySettings, splitPercentage: Number(e.target.value)})}
                   className="w-full rounded bg-white/10 px-2 py-1 text-sm text-white"
                 />
+                <p className="mt-1 text-xs text-white/40">Controls how much screen space the webpage takes (teleprompter gets the rest)</p>
               </div>
             </div>
           </div>
@@ -470,7 +460,6 @@ export default function ConfigPage() {
             <div className="space-y-3">
               {combinedQueue.map((urlConfig, index) => {
                 const isPassage = urlConfig.type === 'passage';
-                const color = isPassage ? 'blue' : 'green';
 
                 return (
                   <div
@@ -479,11 +468,14 @@ export default function ConfigPage() {
                     onDragStart={(e) => handleDragStart(e, urlConfig)}
                     onDragOver={handleDragOver}
                     onDrop={(e) => handleDrop(e, urlConfig)}
-                    className={`rounded-lg bg-${color}-500/10 border border-${color}-500/20 p-4 cursor-move hover:bg-${color}-500/20 transition`}
+                    className={isPassage
+                      ? "rounded-lg bg-blue-500/10 border border-blue-500/20 p-4 cursor-move hover:bg-blue-500/20 transition"
+                      : "rounded-lg bg-green-500/10 border border-green-500/20 p-4 cursor-move hover:bg-green-500/20 transition"
+                    }
                   >
                     <div className="mb-2">
                       <div className="mb-1 flex items-center justify-between">
-                        <span className={`text-xs font-semibold text-${color}-400`}>
+                        <span className={isPassage ? "text-xs font-semibold text-blue-400" : "text-xs font-semibold text-green-400"}>
                           #{index + 1} - {urlConfig.title}
                         </span>
                         <span className="text-xs text-white/40">⋮⋮</span>
@@ -510,7 +502,7 @@ export default function ConfigPage() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleEditUrl(urlConfig)}
-                        className={`text-xs text-${color}-400 hover:text-${color}-300`}
+                        className="text-xs text-green-400 hover:text-green-300"
                       >
                         Edit
                       </button>
@@ -540,8 +532,23 @@ export default function ConfigPage() {
             <div className="space-y-4">
               {currentSelectedText && (
                 <div className="rounded-lg bg-white/5 p-3">
-                  <p className="text-xs text-white/60 mb-1">Selected text:</p>
-                  <p className="text-sm text-white/80 italic">&quot;{currentSelectedText}&quot;</p>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <p className="text-xs text-white/60 mb-1">Selected text:</p>
+                      <p className="text-sm text-white/80 italic">&quot;{currentSelectedText}&quot;</p>
+                    </div>
+                    {editingId && (
+                      <button
+                        onClick={() => {
+                          setShowUrlDialog(false);
+                          // Keep editingId and form data, user will reselect text
+                        }}
+                        className="ml-2 text-xs text-green-400 hover:text-green-300"
+                      >
+                        Reselect
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
