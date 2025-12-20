@@ -7,6 +7,20 @@ import type { PassageBasedUrl, StandaloneUrl, UrlConfigState, WebpageDisplaySett
 const STORAGE_KEY = "teleprompter_script";
 const CONFIG_STORAGE_KEY = "teleprompter_url_config";
 
+// Normalize URL to ensure it has a protocol
+function normalizeUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return trimmed;
+
+  // Already has protocol
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
+
+  // Add https:// prefix
+  return `https://${trimmed}`;
+}
+
 export default function ConfigPage() {
   const router = useRouter();
   const [scriptText, setScriptText] = useState("");
@@ -148,6 +162,7 @@ export default function ConfigPage() {
 
     const start = Math.min(selectionStart, selectionEnd);
     const end = Math.max(selectionStart, selectionEnd);
+    const normalizedUrl = normalizeUrl(currentUrl);
 
     if (editingId) {
       // Update existing URL
@@ -158,7 +173,7 @@ export default function ConfigPage() {
               startWordIndex: start,
               endWordIndex: end,
               selectedText: currentSelectedText,
-              url: currentUrl,
+              url: normalizedUrl,
               title: currentTitle,
               relevance: currentRelevance
             }
@@ -175,7 +190,7 @@ export default function ConfigPage() {
         startWordIndex: start,
         endWordIndex: end,
         selectedText: currentSelectedText,
-        url: currentUrl,
+        url: normalizedUrl,
         title: currentTitle,
         relevance: currentRelevance,
         queuePosition: maxPosition + 1
@@ -205,6 +220,8 @@ export default function ConfigPage() {
   const handleSaveStandaloneUrl = () => {
     if (!currentUrl || !currentTriggerPhrase || !currentTitle) return;
 
+    const normalizedUrl = normalizeUrl(currentUrl);
+
     if (editingId) {
       // Update existing URL
       setStandaloneUrls(standaloneUrls.map(u =>
@@ -212,7 +229,7 @@ export default function ConfigPage() {
           ? {
               ...u,
               triggerPhrase: currentTriggerPhrase,
-              url: currentUrl,
+              url: normalizedUrl,
               title: currentTitle,
               relevance: currentRelevance
             }
@@ -227,7 +244,7 @@ export default function ConfigPage() {
         id: crypto.randomUUID(),
         type: 'standalone',
         triggerPhrase: currentTriggerPhrase,
-        url: currentUrl,
+        url: normalizedUrl,
         title: currentTitle,
         relevance: currentRelevance,
         queuePosition: maxPosition + 1
@@ -247,6 +264,11 @@ export default function ConfigPage() {
 
   // Drag and drop handlers for combined queue
   const handleDragStart = (e: React.DragEvent, url: PassageBasedUrl | StandaloneUrl) => {
+    // Only allow dragging standalones
+    if (url.type === 'passage') {
+      e.preventDefault();
+      return;
+    }
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', JSON.stringify({ id: url.id, type: url.type }));
   };
@@ -256,38 +278,78 @@ export default function ConfigPage() {
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (e: React.DragEvent, targetUrl: PassageBasedUrl | StandaloneUrl) => {
+  const handleDrop = (e: React.DragEvent, targetUrl: PassageBasedUrl | StandaloneUrl, targetVisualIndex: number) => {
     e.preventDefault();
     const data = e.dataTransfer.getData('text/plain');
-    const { id: draggedId } = JSON.parse(data) as { id: string; type: 'passage' | 'standalone' };
+    const { id: draggedId, type: draggedType } = JSON.parse(data) as { id: string; type: 'passage' | 'standalone' };
+
+    // Only allow dragging standalones (passages are locked in script order)
+    if (draggedType === 'passage') {
+      console.log("[Drag-Drop] Cannot drag passages - they're locked in script order");
+      return;
+    }
 
     if (draggedId === targetUrl.id) return;
 
-    // Build combined queue and find indices
-    const combinedQueue = [...passageUrls, ...standaloneUrls].sort((a, b) => a.queuePosition - b.queuePosition);
-    const draggedIndex = combinedQueue.findIndex(u => u.id === draggedId);
-    const targetIndex = combinedQueue.findIndex(u => u.id === targetUrl.id);
+    // Get current combined queue (without the dragged item)
+    const currentCombined = combinedQueue.filter(u => u.id !== draggedId);
 
-    if (draggedIndex === -1 || targetIndex === -1) return;
+    // Calculate the queuePosition for the dropped standalone
+    // We want to insert it at targetVisualIndex in the queue without the dragged item
+    let newQueuePosition: number;
 
-    // Reorder: remove dragged item and insert at target position
-    const reordered = [...combinedQueue];
-    const [draggedItem] = reordered.splice(draggedIndex, 1);
-    if (!draggedItem) return;
-    reordered.splice(targetIndex, 0, draggedItem);
+    if (targetVisualIndex === 0) {
+      // Dropping at the very start
+      const firstCard = currentCombined[0];
+      if (firstCard?.type === 'passage') {
+        // Before first passage (which is at position 0)
+        newQueuePosition = -100;
+      } else if (firstCard) {
+        // Before first standalone
+        newQueuePosition = firstCard.queuePosition - 100;
+      } else {
+        newQueuePosition = 0;
+      }
+    } else if (targetVisualIndex >= currentCombined.length) {
+      // Dropping at the very end
+      const lastCard = currentCombined[currentCombined.length - 1];
+      if (lastCard?.type === 'passage') {
+        const passageIndex = passageUrls.filter(p => p.startWordIndex <= lastCard.startWordIndex).length - 1;
+        newQueuePosition = (passageIndex + 1) * 1000;
+      } else if (lastCard) {
+        newQueuePosition = lastCard.queuePosition + 100;
+      } else {
+        newQueuePosition = 0;
+      }
+    } else {
+      // Dropping between two cards
+      const beforeCard = currentCombined[targetVisualIndex - 1];
+      const afterCard = currentCombined[targetVisualIndex];
 
-    // Reassign queuePosition values sequentially
-    const updatedQueue = reordered.map((item, index) => ({
-      ...item,
-      queuePosition: index
-    }));
+      if (!beforeCard || !afterCard) {
+        // Fallback to end position
+        newQueuePosition = currentCombined.length * 1000;
+      } else {
+        const beforePos = beforeCard.type === 'passage'
+          ? passageUrls.filter(p => p.startWordIndex <= beforeCard.startWordIndex).length * 1000 - 1000
+          : beforeCard.queuePosition;
 
-    // Split back into passage and standalone arrays
-    const newPassageUrls = updatedQueue.filter(u => u.type === 'passage') as PassageBasedUrl[];
-    const newStandaloneUrls = updatedQueue.filter(u => u.type === 'standalone') as StandaloneUrl[];
+        const afterPos = afterCard.type === 'passage'
+          ? passageUrls.filter(p => p.startWordIndex <= afterCard.startWordIndex).length * 1000 - 1000
+          : afterCard.queuePosition;
 
-    setPassageUrls(newPassageUrls);
-    setStandaloneUrls(newStandaloneUrls);
+        // Place in the middle
+        newQueuePosition = (beforePos + afterPos) / 2;
+      }
+    }
+
+    // Update the standalone with the new queuePosition
+    const updatedStandalones = standaloneUrls.map(s =>
+      s.id === draggedId ? { ...s, queuePosition: newQueuePosition } : s
+    );
+
+    setStandaloneUrls(updatedStandalones);
+    console.log(`[Drag-Drop] Moved standalone to position ${newQueuePosition}`);
   };
 
   const loadTestData = () => {
@@ -356,8 +418,30 @@ export default function ConfigPage() {
     router.push("/teleprompter");
   };
 
-  // Combined queue sorted by queuePosition for manual "Next" button
-  const combinedQueue = [...passageUrls, ...standaloneUrls].sort((a, b) => a.queuePosition - b.queuePosition);
+  // Combined queue: passages sorted by script order (locked), standalones freely positioned
+  // Each standalone has a queuePosition representing its visual position in the full queue
+  const combinedQueue = (() => {
+    const sortedPassages = [...passageUrls].sort((a, b) => a.startWordIndex - b.startWordIndex);
+
+    // Create array of all cards with a sort key
+    const allCards: Array<{card: PassageBasedUrl | StandaloneUrl; sortKey: number}> = [
+      // Passages use their script position as base, multiplied to leave room for standalones
+      ...sortedPassages.map((p, index) => ({
+        card: p,
+        sortKey: index * 1000 // Large gap to insert standalones between
+      })),
+      // Standalones use their queuePosition directly
+      ...standaloneUrls.map(s => ({
+        card: s,
+        sortKey: s.queuePosition
+      }))
+    ];
+
+    // Sort by the sort key
+    allCards.sort((a, b) => a.sortKey - b.sortKey);
+
+    return allCards.map(item => item.card);
+  })();
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-black to-zinc-900">
@@ -464,12 +548,12 @@ export default function ConfigPage() {
                 return (
                   <div
                     key={urlConfig.id}
-                    draggable
+                    draggable={!isPassage}
                     onDragStart={(e) => handleDragStart(e, urlConfig)}
                     onDragOver={handleDragOver}
-                    onDrop={(e) => handleDrop(e, urlConfig)}
+                    onDrop={(e) => handleDrop(e, urlConfig, index)}
                     className={isPassage
-                      ? "rounded-lg bg-blue-500/10 border border-blue-500/20 p-4 cursor-move hover:bg-blue-500/20 transition"
+                      ? "rounded-lg bg-blue-500/10 border border-blue-500/20 p-4 transition"
                       : "rounded-lg bg-green-500/10 border border-green-500/20 p-4 cursor-move hover:bg-green-500/20 transition"
                     }
                   >
@@ -477,8 +561,9 @@ export default function ConfigPage() {
                       <div className="mb-1 flex items-center justify-between">
                         <span className={isPassage ? "text-xs font-semibold text-blue-400" : "text-xs font-semibold text-green-400"}>
                           #{index + 1} - {urlConfig.title}
+                          {isPassage && <span className="ml-2 text-xs text-white/40">(locked in script order)</span>}
                         </span>
-                        <span className="text-xs text-white/40">⋮⋮</span>
+                        <span className="text-xs text-white/40">{!isPassage && '⋮⋮'}</span>
                       </div>
                       {isPassage ? (
                         <>

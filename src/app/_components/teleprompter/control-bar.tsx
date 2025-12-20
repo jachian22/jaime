@@ -11,7 +11,9 @@ interface ControlBarProps {
   onManualRewind: () => void;
   connectionStatus: 'connecting' | 'ready' | 'closed';
   onNextUrl?: () => void;
+  onPrevUrl?: () => void;
   hasNextUrl?: boolean;
+  hasPrevUrl?: boolean;
   queueInfo?: string;
 }
 
@@ -26,7 +28,9 @@ export function ControlBar({
   onManualRewind,
   connectionStatus,
   onNextUrl,
+  onPrevUrl,
   hasNextUrl,
+  hasPrevUrl,
   queueInfo,
 }: ControlBarProps) {
   return (
@@ -143,6 +147,14 @@ export function ControlBar({
             <div className="text-sm text-white/60">
               {queueInfo}
             </div>
+          )}
+          {hasPrevUrl && onPrevUrl && (
+            <button
+              onClick={onPrevUrl}
+              className="rounded-full bg-purple-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-purple-700"
+            >
+              ← Prev URL
+            </button>
           )}
           {hasNextUrl && onNextUrl && (
             <button

@@ -196,7 +196,7 @@ export default function TeleprompterPage() {
   });
 
   // URL queue - configured URLs that trigger based on passages or phrases
-  const { triggerNextInQueue, hasNextInQueue, queueIndex, totalInQueue } = useUrlQueue({
+  const { triggerNextInQueue, triggerPrevInQueue, hasNextInQueue, hasPrevInQueue, queueIndex, totalInQueue } = useUrlQueue({
     currentWordIndex,
     recentTranscript,
     enabled: isRecording,
@@ -228,7 +228,7 @@ export default function TeleprompterPage() {
         </div>
       ) : (
         // Split-screen mode with independent scroll containers
-        <div className="flex h-screen bg-gradient-to-b from-black to-zinc-900">
+        <div className="flex h-screen bg-gradient-to-b from-black to-zinc-900 pb-24">
           <div
             className="h-full border-r border-white/10"
             style={{ width: teleprompterWidth }}
@@ -268,7 +268,9 @@ export default function TeleprompterPage() {
         onManualRewind={handleManualRewind}
         connectionStatus={connectionStatus}
         onNextUrl={triggerNextInQueue}
+        onPrevUrl={triggerPrevInQueue}
         hasNextUrl={hasNextInQueue}
+        hasPrevUrl={hasPrevInQueue}
         queueInfo={totalInQueue > 0 ? `Queue: ${queueIndex + 1}/${totalInQueue}` : undefined}
       />
     </>

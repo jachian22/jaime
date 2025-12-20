@@ -5,6 +5,15 @@ import type { UrlConfigState } from "@/types/url-config";
 
 const CONFIG_STORAGE_KEY = "teleprompter_url_config";
 
+// Normalize text for matching: lowercase, remove punctuation, normalize whitespace
+function normalizeForMatching(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ') // Replace punctuation with spaces
+    .replace(/\s+/g, ' ')      // Normalize multiple spaces to single space
+    .trim();
+}
+
 interface UseUrlQueueProps {
   currentWordIndex: number;
   recentTranscript: string;
@@ -53,12 +62,12 @@ export function useUrlQueue({
   useEffect(() => {
     if (!enabled || !config || !recentTranscript) return;
 
-    const lowerTranscript = recentTranscript.toLowerCase();
+    const normalizedTranscript = normalizeForMatching(recentTranscript);
 
     for (const standaloneUrl of config.standaloneUrls) {
-      const triggerPhrase = standaloneUrl.triggerPhrase.toLowerCase();
+      const normalizedTrigger = normalizeForMatching(standaloneUrl.triggerPhrase);
       if (
-        lowerTranscript.includes(triggerPhrase) &&
+        normalizedTranscript.includes(normalizedTrigger) &&
         !triggeredIdsRef.current.has(standaloneUrl.id)
       ) {
         console.log("[URL Queue] Standalone phrase triggered:", standaloneUrl);
@@ -86,18 +95,46 @@ export function useUrlQueue({
     const urlConfig = combinedQueue[queueIndex];
     if (!urlConfig) return null;
 
-    console.log("[URL Queue] Manually triggered:", urlConfig);
+    console.log("[URL Queue] Manually triggered next:", urlConfig);
     onUrlTrigger(urlConfig.url, urlConfig.relevance, urlConfig.title);
     setQueueIndex(prev => prev + 1);
     return urlConfig;
   };
 
+  // Manual trigger for previous URL in combined queue
+  const triggerPrevInQueue = () => {
+    if (!config) {
+      console.log("[URL Queue] No configuration loaded");
+      return null;
+    }
+
+    if (queueIndex <= 0) {
+      console.log("[URL Queue] Already at first URL");
+      return null;
+    }
+
+    // Get combined queue sorted by queuePosition
+    const combinedQueue = [...config.passageUrls, ...config.standaloneUrls].sort((a, b) => a.queuePosition - b.queuePosition);
+
+    const prevIndex = queueIndex - 1;
+    const urlConfig = combinedQueue[prevIndex];
+    if (!urlConfig) return null;
+
+    console.log("[URL Queue] Manually triggered prev:", urlConfig);
+    onUrlTrigger(urlConfig.url, urlConfig.relevance, urlConfig.title);
+    setQueueIndex(prevIndex);
+    return urlConfig;
+  };
+
   const combinedQueue = config ? [...config.passageUrls, ...config.standaloneUrls].sort((a, b) => a.queuePosition - b.queuePosition) : [];
   const hasNextInQueue = config !== null && queueIndex < combinedQueue.length;
+  const hasPrevInQueue = config !== null && queueIndex > 0;
 
   return {
     triggerNextInQueue,
+    triggerPrevInQueue,
     hasNextInQueue,
+    hasPrevInQueue,
     queueIndex,
     totalInQueue: combinedQueue.length,
   };
