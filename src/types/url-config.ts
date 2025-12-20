@@ -36,4 +36,5 @@ export interface UrlConfigState {
   passageUrls: PassageBasedUrl[];
   standaloneUrls: StandaloneUrl[];
   displaySettings: WebpageDisplaySettings;
+  aiToolCallingEnabled?: boolean; // Whether AI agentic search is enabled
 }

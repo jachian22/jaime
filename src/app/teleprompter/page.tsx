@@ -33,7 +33,7 @@ export default function TeleprompterPage() {
     splitPercentage: 50
   });
   const [isFirstReveal, setIsFirstReveal] = useState(true);
-  const [hasConfiguredUrls, setHasConfiguredUrls] = useState(false);
+  const [aiToolCallingEnabled, setAiToolCallingEnabled] = useState(false);
   const matcherRef = useRef<FastWordMatcher | null>(null);
   const sentenceBufferRef = useRef<string>("");
 
@@ -54,17 +54,16 @@ export default function TeleprompterPage() {
       setCurrentWordIndex(parseInt(savedIndex, 10));
     }
 
-    // Load display settings from config and check if URLs are configured
+    // Load display settings and AI toggle from config
     if (savedConfig) {
       try {
         const config = JSON.parse(savedConfig) as UrlConfigState;
         setDisplaySettings(config.displaySettings);
 
-        // Check if any URL cards are configured
-        const hasUrls = (config.passageUrls?.length ?? 0) > 0 || (config.standaloneUrls?.length ?? 0) > 0;
-        setHasConfiguredUrls(hasUrls);
+        // Load AI tool calling setting (defaults to false if not set)
+        setAiToolCallingEnabled(config.aiToolCallingEnabled ?? false);
 
-        console.log(`[URL Config] Found ${config.passageUrls?.length ?? 0} passage URLs and ${config.standaloneUrls?.length ?? 0} standalone URLs. AI tool calling ${hasUrls ? 'DISABLED' : 'ENABLED'}`);
+        console.log(`[URL Config] Found ${config.passageUrls?.length ?? 0} passage URLs and ${config.standaloneUrls?.length ?? 0} standalone URLs. AI tool calling ${config.aiToolCallingEnabled ? 'ENABLED' : 'DISABLED'}`);
       } catch (error) {
         console.error("Failed to parse URL config:", error);
       }
@@ -184,7 +183,7 @@ export default function TeleprompterPage() {
   }, []);
 
   // AI tool calling - automatically open browser when context warrants
-  // Only enabled when NO manual URL cards are configured (manual cards take priority)
+  // Controlled by toggle in config page
   // Triggers on sentence completion (non-blocking)
   useAIToolCalling({
     scriptText,
@@ -192,7 +191,7 @@ export default function TeleprompterPage() {
     recentTranscript,
     completedSentence,
     onToolCall: handleUrlTrigger,
-    enabled: isRecording && !hasConfiguredUrls,
+    enabled: isRecording && aiToolCallingEnabled,
   });
 
   // URL queue - configured URLs that trigger based on passages or phrases
@@ -271,7 +270,7 @@ export default function TeleprompterPage() {
         onPrevUrl={triggerPrevInQueue}
         hasNextUrl={hasNextInQueue}
         hasPrevUrl={hasPrevInQueue}
-        queueInfo={totalInQueue > 0 ? `Queue: ${queueIndex + 1}/${totalInQueue}` : undefined}
+        queueInfo={totalInQueue > 0 ? `Queue: ${queueIndex >= 0 ? queueIndex + 1 : 0}/${totalInQueue}` : undefined}
       />
     </>
   );
