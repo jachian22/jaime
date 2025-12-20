@@ -16,21 +16,23 @@ export function TextViewer({ scriptText, currentWordIndex }: TextViewerProps) {
 
   // Smooth scroll with easing to position current word at 25% from top
   useEffect(() => {
-    if (!currentWordRef.current) return;
+    if (!currentWordRef.current || !containerRef.current) return;
 
     const element = currentWordRef.current;
+    const container = containerRef.current;
 
-    // Get element position relative to page
+    // Get element position relative to container
     const elementRect = element.getBoundingClientRect();
-    const viewportHeight = window.innerHeight;
+    const containerRect = container.getBoundingClientRect();
+    const containerHeight = container.clientHeight;
 
-    // Target: position element at 25% down from top of viewport
-    const targetOffsetFromTop = viewportHeight * 0.25;
+    // Target: position element at 25% down from top of container
+    const targetOffsetFromTop = containerHeight * 0.25;
 
-    // Calculate target scroll position for window
-    const currentScrollY = window.scrollY || window.pageYOffset;
-    const elementTopRelativeToViewport = elementRect.top;
-    const targetScrollY = currentScrollY + elementTopRelativeToViewport - targetOffsetFromTop;
+    // Calculate target scroll position for container
+    const currentScrollY = container.scrollTop;
+    const elementTopRelativeToContainer = elementRect.top - containerRect.top;
+    const targetScrollY = currentScrollY + elementTopRelativeToContainer - targetOffsetFromTop;
 
     // Smooth scroll with easing
     const startScroll = currentScrollY;
@@ -52,7 +54,7 @@ export function TextViewer({ scriptText, currentWordIndex }: TextViewerProps) {
       const progress = Math.min(elapsed / duration, 1);
       const easedProgress = easeOutCubic(progress);
 
-      window.scrollTo(0, startScroll + distance * easedProgress);
+      container.scrollTop = startScroll + distance * easedProgress;
 
       if (progress < 1) {
         isScrollingRef.current = true;
@@ -71,7 +73,7 @@ export function TextViewer({ scriptText, currentWordIndex }: TextViewerProps) {
   return (
     <div
       ref={containerRef}
-      className="h-full min-h-screen overflow-y-auto p-8"
+      className="h-full overflow-y-auto p-8"
       style={{ scrollBehavior: 'auto' }} // Disable CSS smooth scroll, we handle it manually
     >
       {/* Top padding to push initial content down to 25% */}

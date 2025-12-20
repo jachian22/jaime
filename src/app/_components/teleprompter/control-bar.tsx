@@ -5,10 +5,16 @@ interface ControlBarProps {
   onToggleRecording: () => void;
   onReset: () => void;
   onBackToEdit: () => void;
+  onGoToConfig?: () => void;
   currentWordIndex: number;
   onManualAdvance: () => void;
   onManualRewind: () => void;
   connectionStatus: 'connecting' | 'ready' | 'closed';
+  onNextUrl?: () => void;
+  onPrevUrl?: () => void;
+  hasNextUrl?: boolean;
+  hasPrevUrl?: boolean;
+  queueInfo?: string;
 }
 
 export function ControlBar({
@@ -16,10 +22,16 @@ export function ControlBar({
   onToggleRecording,
   onReset,
   onBackToEdit,
+  onGoToConfig,
   currentWordIndex,
   onManualAdvance,
   onManualRewind,
   connectionStatus,
+  onNextUrl,
+  onPrevUrl,
+  hasNextUrl,
+  hasPrevUrl,
+  queueInfo,
 }: ControlBarProps) {
   return (
     <div className="fixed bottom-0 left-0 right-0 border-t border-white/10 bg-gradient-to-t from-black to-zinc-900 p-4">
@@ -32,6 +44,14 @@ export function ControlBar({
           >
             ← Edit Script
           </button>
+          {onGoToConfig && (
+            <button
+              onClick={onGoToConfig}
+              className="rounded-full bg-white/10 px-6 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
+            >
+              Configure URLs
+            </button>
+          )}
         </div>
 
         {/* Center section - recording control */}
@@ -123,6 +143,27 @@ export function ControlBar({
           <div className="text-sm text-white/60">
             Word: {currentWordIndex}
           </div>
+          {queueInfo && (
+            <div className="text-sm text-white/60">
+              {queueInfo}
+            </div>
+          )}
+          {hasPrevUrl && onPrevUrl && (
+            <button
+              onClick={onPrevUrl}
+              className="rounded-full bg-purple-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-purple-700"
+            >
+              ← Prev URL
+            </button>
+          )}
+          {hasNextUrl && onNextUrl && (
+            <button
+              onClick={onNextUrl}
+              className="rounded-full bg-purple-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-purple-700"
+            >
+              Next URL →
+            </button>
+          )}
           <button
             onClick={onReset}
             className="rounded-full bg-white/10 px-6 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
