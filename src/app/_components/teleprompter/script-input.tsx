@@ -58,6 +58,22 @@ export function ScriptInput() {
           >
             Configure Tool Calls
           </button>
+
+          <div className="flex items-center gap-4">
+            <div className="h-px flex-1 bg-white/10"></div>
+            <span className="text-sm text-white/40">or</span>
+            <div className="h-px flex-1 bg-white/10"></div>
+          </div>
+
+          <button
+            onClick={() => router.push('/jaime')}
+            className="w-full rounded-full bg-purple-600 px-10 py-3 font-semibold text-white transition hover:bg-purple-700"
+          >
+            Try Jaime Mode
+          </button>
+          <p className="text-center text-sm text-white/50">
+            AI-powered research assistant for free-form conversations
+          </p>
         </div>
       </div>
     </div>
