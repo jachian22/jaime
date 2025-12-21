@@ -22,6 +22,7 @@ export interface UseJaimeModeReturn {
 
   // Controls
   startSession: () => void;
+  toggleRecording: () => void;
   endSession: () => void;
   privacyMode: PrivacyMode;
   setPrivacyMode: (mode: PrivacyMode) => void;
@@ -65,6 +66,17 @@ export function useJaimeMode(): UseJaimeModeReturn {
 
     console.log('[Jaime Mode] Session started:', newSession.id);
   }, [privacyMode, sensitivity]);
+
+  // Toggle recording (pause/resume)
+  const toggleRecording = useCallback(() => {
+    if (!session) return;
+
+    setIsRecording((prev) => {
+      const newState = !prev;
+      console.log(`[Jaime Mode] Recording ${newState ? 'resumed' : 'paused'}`);
+      return newState;
+    });
+  }, [session]);
 
   // Auto-save effect - runs whenever session or transcript/urlHistory changes
   useEffect(() => {
@@ -205,6 +217,7 @@ export function useJaimeMode(): UseJaimeModeReturn {
     openUrl,
     closeUrl,
     startSession,
+    toggleRecording,
     endSession,
     privacyMode,
     setPrivacyMode,

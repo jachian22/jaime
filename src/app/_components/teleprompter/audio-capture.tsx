@@ -18,10 +18,21 @@ export function AudioCapture({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const deepgramSocketRef = useRef<WebSocket | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const isRecordingRef = useRef(isRecording);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Keep isRecordingRef in sync
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
 
   useEffect(() => {
     if (!isRecording) {
       // Clean up when recording stops
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
       if (mediaRecorderRef.current?.state === "recording") {
         mediaRecorderRef.current.stop();
       }
@@ -48,14 +59,20 @@ export function AudioCapture({
           throw new Error("Failed to get Deepgram token");
         }
 
-        // Request microphone access
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            channelCount: 1,
-            // Don't specify sampleRate - let browser use its native rate
-          },
-        });
-        streamRef.current = stream;
+        // Reuse existing stream or request new microphone access
+        let stream = streamRef.current;
+        if (!stream || !stream.active) {
+          console.log("[AudioCapture] Requesting microphone access...");
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              channelCount: 1,
+              // Don't specify sampleRate - let browser use its native rate
+            },
+          });
+          streamRef.current = stream;
+        } else {
+          console.log("[AudioCapture] Reusing existing audio stream");
+        }
 
         // Get the actual sample rate from the audio track
         const audioTrack = stream.getAudioTracks()[0];
@@ -71,10 +88,17 @@ export function AudioCapture({
           });
         }
 
-        // Set up MediaRecorder
-        const mediaRecorder = new MediaRecorder(stream, {
-          mimeType: "audio/webm",
-        });
+        // Set up or reuse MediaRecorder
+        let mediaRecorder = mediaRecorderRef.current;
+        if (!mediaRecorder || mediaRecorder.state === "inactive") {
+          console.log("[AudioCapture] Creating new MediaRecorder...");
+          mediaRecorder = new MediaRecorder(stream, {
+            mimeType: "audio/webm",
+          });
+          mediaRecorderRef.current = mediaRecorder;
+        } else {
+          console.log("[AudioCapture] Reusing existing MediaRecorder");
+        }
 
         // Connect to Deepgram WebSocket
         // IMPORTANT: Tell Deepgram the actual sample rate we're sending
@@ -83,6 +107,7 @@ export function AudioCapture({
           `wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true&sample_rate=${actualSampleRate}`,
           ["token", token]
         );
+        deepgramSocketRef.current = socket;
 
         socket.onopen = () => {
           console.log("[Deepgram] WebSocket connection opened ✓");
@@ -126,41 +151,54 @@ export function AudioCapture({
 
         socket.onclose = (event) => {
           console.log(
-            `[Deepgram] Connection closed. Code: ${event.code}, Reason: ${event.reason}`
+            `[Deepgram] Connection closed. Code: ${event.code}, Reason: ${event.reason || 'No reason'}`
           );
           onConnectionStatusChange?.('closed');
-        };
 
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            console.log(
-              `[MediaRecorder] Audio chunk ready: ${event.data.size} bytes`
-            );
-            if (socket.readyState === WebSocket.OPEN) {
-              socket.send(event.data);
-              console.log("[MediaRecorder] Audio sent to Deepgram");
-            } else {
-              console.warn(
-                "[MediaRecorder] WebSocket not open, skipping audio chunk"
-              );
-            }
+          // Auto-reconnect if still recording (e.g., Deepgram closed due to inactivity)
+          if (isRecordingRef.current && event.code === 1000) {
+            console.log('[Deepgram] Auto-reconnecting in 1 second...');
+            reconnectTimeoutRef.current = setTimeout(() => {
+              if (isRecordingRef.current) {
+                console.log('[Deepgram] Reconnecting...');
+                void startRecording();
+              }
+            }, 1000);
           }
         };
 
-        mediaRecorder.onstop = () => {
-          console.log("[MediaRecorder] Stopped");
-        };
+        // Set up MediaRecorder handlers (only if new or inactive)
+        if (mediaRecorder.state === "inactive") {
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              console.log(
+                `[MediaRecorder] Audio chunk ready: ${event.data.size} bytes`
+              );
+              // Use ref to always send to current WebSocket
+              const currentSocket = deepgramSocketRef.current;
+              if (currentSocket && currentSocket.readyState === WebSocket.OPEN) {
+                currentSocket.send(event.data);
+                console.log("[MediaRecorder] Audio sent to Deepgram");
+              } else {
+                console.warn(
+                  "[MediaRecorder] WebSocket not open, skipping audio chunk"
+                );
+              }
+            }
+          };
 
-        mediaRecorder.onstart = () => {
-          console.log("[MediaRecorder] Started recording");
-        };
+          mediaRecorder.onstop = () => {
+            console.log("[MediaRecorder] Stopped");
+          };
 
-        // Start recording, send chunks every 100ms
-        mediaRecorder.start(100);
-        console.log("[MediaRecorder] Recording started, sending chunks every 100ms");
+          mediaRecorder.onstart = () => {
+            console.log("[MediaRecorder] Started recording");
+          };
 
-        mediaRecorderRef.current = mediaRecorder;
-        deepgramSocketRef.current = socket;
+          // Start recording, send chunks every 100ms
+          mediaRecorder.start(100);
+          console.log("[MediaRecorder] Recording started, sending chunks every 100ms");
+        }
       } catch (error) {
         console.error("Error starting audio capture:", error);
         onConnectionStatusChange?.('closed');
@@ -177,6 +215,10 @@ export function AudioCapture({
 
     return () => {
       // Cleanup on unmount
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
       if (mediaRecorderRef.current?.state === "recording") {
         mediaRecorderRef.current.stop();
       }

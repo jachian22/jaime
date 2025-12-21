@@ -23,6 +23,7 @@ export default function JaimePage() {
     currentUrl,
     closeUrl,
     startSession,
+    toggleRecording,
     endSession,
     privacyMode,
     setPrivacyMode,
@@ -45,14 +46,15 @@ export default function JaimePage() {
 
   // Toggle recording
   const handleToggleRecording = useCallback(() => {
-    if (!isRecording) {
+    if (!sessionId) {
+      // No session yet - start a new one
       setAudioError(null); // Clear any previous errors
       startSession();
     } else {
-      // Just pause, don't end session
-      // Actual pause logic would be in AudioCapture
+      // Session exists - toggle pause/resume
+      toggleRecording();
     }
-  }, [isRecording, startSession]);
+  }, [sessionId, startSession, toggleRecording]);
 
   // Handle audio errors
   const handleAudioError = useCallback((error: string) => {
