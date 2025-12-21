@@ -13,6 +13,7 @@ import { useVoiceCommands, type VoiceCommand } from "@/hooks/use-voice-commands"
 export default function JaimePage() {
   const router = useRouter();
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'ready' | 'closed'>('closed');
+  const [audioError, setAudioError] = useState<string | null>(null);
 
   const {
     isRecording,
@@ -45,12 +46,19 @@ export default function JaimePage() {
   // Toggle recording
   const handleToggleRecording = useCallback(() => {
     if (!isRecording) {
+      setAudioError(null); // Clear any previous errors
       startSession();
     } else {
       // Just pause, don't end session
       // Actual pause logic would be in AudioCapture
     }
   }, [isRecording, startSession]);
+
+  // Handle audio errors
+  const handleAudioError = useCallback((error: string) => {
+    setAudioError(error);
+    console.error('[Jaime] Audio error:', error);
+  }, []);
 
   // Toggle privacy mode
   const handleTogglePrivacyMode = useCallback(() => {
@@ -189,11 +197,57 @@ export default function JaimePage() {
         </div>
       )}
 
+      {/* Audio error banner */}
+      {audioError && (
+        <div className="fixed left-1/2 top-20 z-50 -translate-x-1/2 animate-fade-in">
+          <div className="max-w-md rounded-lg border border-red-500/30 bg-red-900/90 p-4 shadow-lg backdrop-blur-sm">
+            <div className="flex items-start gap-3">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6 flex-shrink-0 text-red-300"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+              <div className="flex-1">
+                <h3 className="mb-1 text-sm font-semibold text-red-200">Microphone Error</h3>
+                <p className="text-sm text-red-300">{audioError}</p>
+              </div>
+              <button
+                onClick={() => setAudioError(null)}
+                className="flex-shrink-0 text-red-300 hover:text-red-100"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Audio Capture (headless) */}
       <AudioCapture
         onTranscript={handleTranscript}
         isRecording={isRecording}
         onConnectionStatusChange={setConnectionStatus}
+        onError={handleAudioError}
       />
 
       {/* Controls */}
