@@ -61,7 +61,7 @@ export function AudioCapture({
 
         // Reuse existing stream or request new microphone access
         let stream = streamRef.current;
-        if (!stream || !stream.active) {
+        if (!stream?.active) {
           console.log("[AudioCapture] Requesting microphone access...");
           stream = await navigator.mediaDevices.getUserMedia({
             audio: {
