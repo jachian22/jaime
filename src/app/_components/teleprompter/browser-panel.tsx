@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { WebpageDisplaySettings } from "@/types/url-config";
 
 interface BrowserPanelProps {
@@ -11,10 +11,60 @@ interface BrowserPanelProps {
 
 export function BrowserPanel({ url, onClose }: BrowserPanelProps) {
   const [loadError, setLoadError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    // Reset states when URL changes
+    setLoadError(false);
+    setIsLoading(true);
+
+    // Set timeout to detect loading failures (5 seconds)
+    timeoutRef.current = setTimeout(() => {
+      if (isLoading) {
+        console.log("[Browser Panel] Timeout loading URL, likely blocked:", url);
+        setLoadError(true);
+        setIsLoading(false);
+      }
+    }, 5000);
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [url, isLoading]);
+
+  const handleIframeLoad = () => {
+    console.log("[Browser Panel] Iframe loaded successfully:", url);
+    setIsLoading(false);
+    setLoadError(false);
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    // Try to detect if content is actually accessible
+    try {
+      const iframe = iframeRef.current;
+      if (iframe?.contentDocument || iframe?.contentWindow?.document) {
+        console.log("[Browser Panel] Content is accessible");
+      }
+    } catch (e) {
+      // Cross-origin - this is normal and expected
+      console.log("[Browser Panel] Cross-origin iframe (normal behavior)");
+    }
+  };
 
   const handleIframeError = () => {
     console.log("[Browser Panel] Failed to load URL in iframe:", url);
     setLoadError(true);
+    setIsLoading(false);
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
   };
 
   const openInNewTab = () => {
@@ -55,6 +105,14 @@ export function BrowserPanel({ url, onClose }: BrowserPanelProps) {
         </div>
       </div>
 
+      {/* Loading indicator */}
+      {isLoading && !loadError && (
+        <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-white/10 border-t-purple-500"></div>
+          <p className="text-sm text-white/60">Loading page...</p>
+        </div>
+      )}
+
       {/* Error message for blocked iframes */}
       {loadError && (
         <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
@@ -66,10 +124,10 @@ export function BrowserPanel({ url, onClose }: BrowserPanelProps) {
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-white">Unable to Display Page</h3>
             <p className="text-sm text-white/60 max-w-md">
-              This website blocks iframe embedding for security reasons. Click &quot;Open in Tab&quot; above to view it in a new browser tab.
+              This website blocks iframe embedding for security reasons (X-Frame-Options or CSP headers). Click &quot;Open in Tab&quot; above to view it.
             </p>
             <p className="text-xs text-white/40">
-              Common sites that block iframes: Google, YouTube, Facebook, Twitter, many banking sites
+              Sites that commonly block iframes: Google, GitHub, Facebook, Twitter, banking sites, many news sites
             </p>
           </div>
           <button
@@ -83,10 +141,12 @@ export function BrowserPanel({ url, onClose }: BrowserPanelProps) {
 
       {/* iframe */}
       <iframe
+        ref={iframeRef}
         src={url}
         className="h-full w-full flex-1 border-0"
         sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
         title="Browser view"
+        onLoad={handleIframeLoad}
         onError={handleIframeError}
         style={{ display: loadError ? 'none' : 'block' }}
       />
