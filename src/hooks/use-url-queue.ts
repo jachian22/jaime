@@ -28,7 +28,7 @@ export function useUrlQueue({
   onUrlTrigger,
 }: UseUrlQueueProps) {
   const [config, setConfig] = useState<UrlConfigState | null>(null);
-  const [queueIndex, setQueueIndex] = useState(0);
+  const [queueIndex, setQueueIndex] = useState(-1); // -1 = nothing shown yet, 0+ = index of last shown URL
   const triggeredIdsRef = useRef<Set<string>>(new Set());
 
   // Load configuration from localStorage
@@ -87,17 +87,18 @@ export function useUrlQueue({
     // Get combined queue sorted by queuePosition
     const combinedQueue = [...config.passageUrls, ...config.standaloneUrls].sort((a, b) => a.queuePosition - b.queuePosition);
 
-    if (queueIndex >= combinedQueue.length) {
+    const nextIndex = queueIndex + 1;
+    if (nextIndex >= combinedQueue.length) {
       console.log("[URL Queue] No more URLs in queue");
       return null;
     }
 
-    const urlConfig = combinedQueue[queueIndex];
+    const urlConfig = combinedQueue[nextIndex];
     if (!urlConfig) return null;
 
     console.log("[URL Queue] Manually triggered next:", urlConfig);
     onUrlTrigger(urlConfig.url, urlConfig.relevance, urlConfig.title);
-    setQueueIndex(prev => prev + 1);
+    setQueueIndex(nextIndex);
     return urlConfig;
   };
 
@@ -108,7 +109,8 @@ export function useUrlQueue({
       return null;
     }
 
-    if (queueIndex <= 0) {
+    const prevIndex = queueIndex - 1;
+    if (prevIndex < 0) {
       console.log("[URL Queue] Already at first URL");
       return null;
     }
@@ -116,7 +118,6 @@ export function useUrlQueue({
     // Get combined queue sorted by queuePosition
     const combinedQueue = [...config.passageUrls, ...config.standaloneUrls].sort((a, b) => a.queuePosition - b.queuePosition);
 
-    const prevIndex = queueIndex - 1;
     const urlConfig = combinedQueue[prevIndex];
     if (!urlConfig) return null;
 
@@ -127,8 +128,8 @@ export function useUrlQueue({
   };
 
   const combinedQueue = config ? [...config.passageUrls, ...config.standaloneUrls].sort((a, b) => a.queuePosition - b.queuePosition) : [];
-  const hasNextInQueue = config !== null && queueIndex < combinedQueue.length;
-  const hasPrevInQueue = config !== null && queueIndex > 0;
+  const hasNextInQueue = config !== null && queueIndex + 1 < combinedQueue.length;
+  const hasPrevInQueue = config !== null && queueIndex >= 0;
 
   return {
     triggerNextInQueue,

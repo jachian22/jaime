@@ -37,6 +37,7 @@ export default function ConfigPage() {
     scrollSpeed: 50,
     splitPercentage: 50
   });
+  const [aiToolCallingEnabled, setAiToolCallingEnabled] = useState<boolean>(!scriptText);
 
   // UI state
   const [showUrlDialog, setShowUrlDialog] = useState(false);
@@ -66,20 +67,22 @@ export default function ConfigPage() {
       if (config.displaySettings) {
         setDisplaySettings(config.displaySettings);
       }
+      // Default: AI enabled if no script, disabled if script exists
+      const defaultAiEnabled = !saved;
+      setAiToolCallingEnabled(config.aiToolCallingEnabled ?? defaultAiEnabled);
     }
   }, [router]);
 
   // Save config to localStorage
   useEffect(() => {
-    if (passageUrls.length > 0 || standaloneUrls.length > 0) {
-      const config: UrlConfigState = {
-        passageUrls,
-        standaloneUrls,
-        displaySettings
-      };
-      localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
-    }
-  }, [passageUrls, standaloneUrls, displaySettings]);
+    const config: UrlConfigState = {
+      passageUrls,
+      standaloneUrls,
+      displaySettings,
+      aiToolCallingEnabled
+    };
+    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
+  }, [passageUrls, standaloneUrls, displaySettings, aiToolCallingEnabled]);
 
   const handleCaptureSelection = () => {
     const selection = window.getSelection();
@@ -521,8 +524,28 @@ export default function ConfigPage() {
 
           {/* Display Settings */}
           <div className="mb-6 rounded-lg bg-white/5 p-4">
-            <h3 className="mb-3 text-sm font-semibold text-white">Webpage Display Settings</h3>
+            <h3 className="mb-3 text-sm font-semibold text-white">Settings</h3>
             <div className="space-y-3">
+              <div>
+                <label className="mb-1 flex items-center justify-between text-xs text-white/70">
+                  <span>AI Agentic Search</span>
+                  <button
+                    onClick={() => setAiToolCallingEnabled(!aiToolCallingEnabled)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      aiToolCallingEnabled ? 'bg-purple-600' : 'bg-white/20'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        aiToolCallingEnabled ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </label>
+                <p className="mt-1 text-xs text-white/40">
+                  When enabled, AI automatically opens relevant webpages during presentation
+                </p>
+              </div>
               <div>
                 <label className="mb-1 block text-xs text-white/70">Webpage Width (%)</label>
                 <input
