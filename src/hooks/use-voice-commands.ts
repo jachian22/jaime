@@ -5,7 +5,7 @@ import type { TranscriptLine } from "@/types/jaime";
 import { JAIME_CONFIG } from "@/constants/jaime-config";
 
 export interface VoiceCommand {
-  type: 'search' | 'close' | 'unknown';
+  type: 'search' | 'fact' | 'close' | 'unknown';
   query?: string;
   timestamp: Date;
   rawText: string;
@@ -24,6 +24,7 @@ export interface UseVoiceCommandsReturn {
 
 // Pattern matching for voice commands
 const COMMAND_PATTERNS = {
+  fact: /(?:jamie|jaime),?\s+(?:what\s+is|who\s+is|when\s+did|when\s+was|where\s+is|why\s+is|how\s+does|how\s+do|tell\s+me\s+about)\s+(.+)/i,
   search: /(?:jamie|jaime),?\s+(?:look\s+up|search|find|show\s+me)\s+(.+)/i,
   close: /(?:jamie|jaime),?\s+(?:close|hide|remove)\s+(?:this|that|it)/i,
 } as const;
@@ -76,7 +77,7 @@ export function useVoiceCommands({
       // Try to match command patterns
       let matchedCommand: VoiceCommand | null = null;
 
-      // Check for "close" command
+      // Check for "close" command (highest priority)
       const closeMatch = COMMAND_PATTERNS.close.exec(text);
       if (closeMatch) {
         matchedCommand = {
@@ -87,7 +88,24 @@ export function useVoiceCommands({
         console.log("[Voice Commands] Matched CLOSE command");
       }
 
-      // Check for "search" command
+      // Check for "fact" command (specific questions)
+      if (!matchedCommand) {
+        const factMatch = COMMAND_PATTERNS.fact.exec(text);
+        if (factMatch) {
+          const query = factMatch[1]?.trim();
+          if (query) {
+            matchedCommand = {
+              type: 'fact',
+              query,
+              timestamp: line.timestamp,
+              rawText: line.text,
+            };
+            console.log("[Voice Commands] Matched FACT command:", query);
+          }
+        }
+      }
+
+      // Check for "search" command (general search)
       if (!matchedCommand) {
         const searchMatch = COMMAND_PATTERNS.search.exec(text);
         if (searchMatch) {

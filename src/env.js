@@ -14,6 +14,7 @@ export const env = createEnv({
     CLERK_SECRET_KEY: z.string().min(1),
     DEEPGRAM_API_KEY: z.string().min(1),
     GOOGLE_API_KEY: z.string().min(1),
+    YOU_COM: z.string().min(1),
   },
 
   /**
@@ -37,6 +38,7 @@ export const env = createEnv({
       process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
     DEEPGRAM_API_KEY: process.env.DEEPGRAM_API_KEY,
     GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+    YOU_COM: process.env.YOU_COM,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

@@ -5,15 +5,40 @@ import { useRouter } from "next/navigation";
 import { JaimeTranscript } from "@/app/_components/jaime/jaime-transcript";
 import { JaimeControls } from "@/app/_components/jaime/jaime-controls";
 import { VoiceCommandIndicator } from "@/app/_components/jaime/voice-command-indicator";
+import { SearchResults } from "@/app/_components/jaime/search-results";
+import { QuickAnswer } from "@/app/_components/jaime/quick-answer";
 import { AudioCapture } from "@/app/_components/teleprompter/audio-capture";
 import { BrowserPanel } from "@/app/_components/teleprompter/browser-panel";
 import { useJaimeMode } from "@/hooks/use-jaime-mode";
 import { useVoiceCommands, type VoiceCommand } from "@/hooks/use-voice-commands";
 
+interface SearchResult {
+  url: string;
+  title: string;
+  description: string;
+  snippets?: string[];
+  thumbnail_url?: string;
+  published_date?: string;
+}
+
+interface Citation {
+  url: string;
+  title: string;
+  snippet: string;
+}
+
+type PanelContent =
+  | { type: 'url'; url: string }
+  | { type: 'search'; query: string; results: SearchResult[] }
+  | { type: 'answer'; query: string; answer: string; citations: Citation[] }
+  | null;
+
 export default function JaimePage() {
   const router = useRouter();
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'ready' | 'closed'>('closed');
   const [audioError, setAudioError] = useState<string | null>(null);
+  const [panelContent, setPanelContent] = useState<PanelContent>(null);
+  const [isLoadingSearch, setIsLoadingSearch] = useState(false);
 
   const {
     isRecording,
@@ -21,6 +46,7 @@ export default function JaimePage() {
     transcriptLines,
     addTranscriptLine,
     currentUrl,
+    openUrl,
     closeUrl,
     startSession,
     toggleRecording,
@@ -77,28 +103,113 @@ export default function JaimePage() {
     }
   }, [endSession, sessionId, router]);
 
+  // Call You.com Search API
+  const handleSearch = useCallback(async (query: string) => {
+    console.log('[Jaime] Searching for:', query);
+    setIsLoadingSearch(true);
+
+    try {
+      const response = await fetch('/api/you/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, count: 5 }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Search failed: ${response.status}`);
+      }
+
+      const data = (await response.json()) as {
+        query: string;
+        results: SearchResult[];
+        count: number;
+      };
+
+      console.log(`[Jaime] Got ${data.count} search results`);
+
+      // Show search results in panel
+      setPanelContent({
+        type: 'search',
+        query: data.query,
+        results: data.results,
+      });
+    } catch (error) {
+      console.error('[Jaime] Search error:', error);
+      setAudioError(error instanceof Error ? error.message : 'Search failed');
+    } finally {
+      setIsLoadingSearch(false);
+    }
+  }, []);
+
+  // Call You.com Express API for quick facts
+  const handleQuickFact = useCallback(async (query: string) => {
+    console.log('[Jaime] Getting fact for:', query);
+    setIsLoadingSearch(true);
+
+    try {
+      const response = await fetch('/api/you/express', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Express API failed: ${response.status}`);
+      }
+
+      const data = (await response.json()) as {
+        query: string;
+        answer: string;
+        citations: Citation[];
+      };
+
+      console.log('[Jaime] Got answer:', data.answer.substring(0, 100));
+
+      // Show quick answer in panel
+      setPanelContent({
+        type: 'answer',
+        query: data.query,
+        answer: data.answer,
+        citations: data.citations,
+      });
+    } catch (error) {
+      console.error('[Jaime] Express API error:', error);
+      setAudioError(error instanceof Error ? error.message : 'Failed to get answer');
+    } finally {
+      setIsLoadingSearch(false);
+    }
+  }, []);
+
   // Handle voice commands
   const handleVoiceCommand = useCallback((command: VoiceCommand) => {
     console.log('[Jaime] Voice command received:', command);
 
     switch (command.type) {
       case 'close':
-        // Close the browser panel
+        // Close the panel
+        setPanelContent(null);
         closeUrl();
         break;
 
       case 'search':
-        // TODO: Implement search functionality in post-MVP
-        // For now, just log the query
-        console.log('[Jaime] Search query:', command.query);
-        // Search stub - will be implemented later
+        // Search via You.com Search API
+        if (command.query) {
+          void handleSearch(command.query);
+        }
+        break;
+
+      case 'fact':
+        // Get quick fact via You.com Express API
+        if (command.query) {
+          void handleQuickFact(command.query);
+        }
         break;
 
       case 'unknown':
         console.log('[Jaime] Unknown command:', command.rawText);
         break;
     }
-  }, [closeUrl]);
+  }, [closeUrl, handleSearch, handleQuickFact]);
 
   // Voice commands hook
   const { lastCommand } = useVoiceCommands({
@@ -107,8 +218,27 @@ export default function JaimePage() {
     onCommand: handleVoiceCommand,
   });
 
-  // Calculate split widths
-  const transcriptWidth = currentUrl !== null ? '50%' : '100%';
+  // Handle result click (open URL in BrowserPanel)
+  const handleResultClick = useCallback((url: string) => {
+    openUrl(url, 'voice-command', 'User clicked search result');
+    setPanelContent({ type: 'url', url });
+  }, [openUrl]);
+
+  // Handle citation click
+  const handleCitationClick = useCallback((url: string) => {
+    openUrl(url, 'voice-command', 'User clicked citation');
+    setPanelContent({ type: 'url', url });
+  }, [openUrl]);
+
+  // Handle close panel
+  const handleClosePanel = useCallback(() => {
+    setPanelContent(null);
+    closeUrl();
+  }, [closeUrl]);
+
+  // Determine if we should show split view
+  const showPanel = panelContent !== null || currentUrl !== null;
+  const transcriptWidth = showPanel ? '50%' : '100%';
   const browserWidth = '50%';
 
   return (
@@ -116,7 +246,7 @@ export default function JaimePage() {
       {/* Voice command indicator */}
       <VoiceCommandIndicator command={lastCommand} />
 
-      {currentUrl === null ? (
+      {!showPanel ? (
         // Fullscreen transcript mode
         <div className="h-screen overflow-hidden bg-gradient-to-b from-black to-zinc-900 pb-32">
           {/* Header Banner */}
@@ -185,15 +315,55 @@ export default function JaimePage() {
               <JaimeTranscript transcriptLines={transcriptLines} />
             </div>
             <div style={{ width: browserWidth }} className="h-full animate-slide-in">
-              <BrowserPanel
-                url={currentUrl}
-                onClose={closeUrl}
-                displaySettings={{
-                  holdTime: 0,
-                  scrollSpeed: 0,
-                  splitPercentage: 50,
-                }}
-              />
+              {/* Loading indicator */}
+              {isLoadingSearch && (
+                <div className="flex h-full items-center justify-center bg-gradient-to-b from-black to-zinc-900">
+                  <div className="text-center">
+                    <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-white/10 border-t-purple-500 mx-auto"></div>
+                    <p className="text-white/60">Searching...</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Render appropriate panel based on content type */}
+              {!isLoadingSearch && panelContent?.type === 'search' && (
+                <SearchResults
+                  query={panelContent.query}
+                  results={panelContent.results}
+                  onResultClick={handleResultClick}
+                />
+              )}
+              {!isLoadingSearch && panelContent?.type === 'answer' && (
+                <QuickAnswer
+                  query={panelContent.query}
+                  answer={panelContent.answer}
+                  citations={panelContent.citations}
+                  onClose={handleClosePanel}
+                  onCitationClick={handleCitationClick}
+                />
+              )}
+              {!isLoadingSearch && panelContent?.type === 'url' && (
+                <BrowserPanel
+                  url={panelContent.url}
+                  onClose={handleClosePanel}
+                  displaySettings={{
+                    holdTime: 0,
+                    scrollSpeed: 0,
+                    splitPercentage: 50,
+                  }}
+                />
+              )}
+              {!isLoadingSearch && !panelContent && currentUrl && (
+                <BrowserPanel
+                  url={currentUrl}
+                  onClose={handleClosePanel}
+                  displaySettings={{
+                    holdTime: 0,
+                    scrollSpeed: 0,
+                    splitPercentage: 50,
+                  }}
+                />
+              )}
             </div>
           </div>
         </div>
