@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Lottie from "lottie-react";
 import type { WebpageDisplaySettings } from "@/types/url-config";
+import runningCharacter from "@/../public/animations/jaime.json";
 
 interface BrowserPanelProps {
   url: string;
@@ -12,13 +14,29 @@ interface BrowserPanelProps {
 export function BrowserPanel({ url, onClose }: BrowserPanelProps) {
   const [loadError, setLoadError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [showCurtain, setShowCurtain] = useState(false);
+  const [hasShownCurtainReveal, setHasShownCurtainReveal] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const curtainRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Reset states when URL changes
     setLoadError(false);
     setIsLoading(true);
+
+    // Trigger curtain reveal on first URL load (even if iframe is blocked)
+    if (!hasShownCurtainReveal) {
+      console.log("[Browser Panel] 🎬 Triggering curtain reveal for first URL:", url);
+      // Small delay to ensure iframe is rendered first
+      setTimeout(() => {
+        console.log("[Browser Panel] 🏃 Setting curtain visible NOW");
+        setShowCurtain(true);
+        setHasShownCurtainReveal(true);
+      }, 100);
+    } else {
+      console.log("[Browser Panel] ⏭️ Skipping curtain - already shown once");
+    }
 
     // Set timeout to detect loading failures (5 seconds)
     timeoutRef.current = setTimeout(() => {
@@ -34,7 +52,7 @@ export function BrowserPanel({ url, onClose }: BrowserPanelProps) {
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [url, isLoading]);
+  }, [url, isLoading, hasShownCurtainReveal]);
 
   const handleIframeLoad = () => {
     console.log("[Browser Panel] Iframe loaded successfully:", url);
@@ -56,6 +74,33 @@ export function BrowserPanel({ url, onClose }: BrowserPanelProps) {
       console.log("[Browser Panel] Cross-origin iframe (normal behavior)");
     }
   };
+
+  // Handle curtain animation end
+  useEffect(() => {
+    const curtain = curtainRef.current;
+    if (!curtain || !showCurtain) return;
+
+    console.log("[Browser Panel] 🎬 Animation should be starting now on curtain element");
+
+    const handleAnimationStart = (_e: AnimationEvent) => {
+      console.log("[Browser Panel] ✨ Animation STARTED:", _e.animationName);
+    };
+
+    const handleAnimationEnd = (_e: AnimationEvent) => {
+      console.log("[Browser Panel] 🏁 Animation ended:", _e.animationName);
+      if (_e.animationName === 'curtain-reveal' || _e.animationName === 'curtain-fade-out') {
+        console.log("[Browser Panel] 🎉 Curtain reveal complete - removing from DOM");
+        setShowCurtain(false);
+      }
+    };
+
+    curtain.addEventListener('animationstart', handleAnimationStart);
+    curtain.addEventListener('animationend', handleAnimationEnd);
+    return () => {
+      curtain.removeEventListener('animationstart', handleAnimationStart);
+      curtain.removeEventListener('animationend', handleAnimationEnd);
+    };
+  }, [showCurtain]);
 
   const handleIframeError = () => {
     console.log("[Browser Panel] Failed to load URL in iframe:", url);
@@ -139,17 +184,143 @@ export function BrowserPanel({ url, onClose }: BrowserPanelProps) {
         </div>
       )}
 
-      {/* iframe */}
-      <iframe
-        ref={iframeRef}
-        src={url}
-        className="h-full w-full flex-1 border-0"
-        sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
-        title="Browser view"
-        onLoad={handleIframeLoad}
-        onError={handleIframeError}
+      {/* Teleprompter frame with curtain reveal */}
+      <div
+        className={`teleprompter-frame relative h-full w-full flex-1 overflow-hidden ${showCurtain ? 'teleprompter-frame--curtain' : ''}`}
         style={{ display: loadError ? 'none' : 'block' }}
-      />
+        ref={(el) => {
+          if (el && showCurtain) {
+            console.log("[Browser Panel] 📦 Frame classes:", el.className);
+            console.log("[Browser Panel] 📦 Has curtain class?", el.classList.contains('teleprompter-frame--curtain'));
+          }
+        }}
+      >
+        {/* iframe */}
+        <iframe
+          ref={iframeRef}
+          src={url}
+          className="teleprompter-iframe absolute inset-0 h-full w-full border-0"
+          sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+          title="Browser view"
+          onLoad={handleIframeLoad}
+          onError={handleIframeError}
+        />
+
+        {/* Curtain overlay */}
+        {showCurtain && (
+          <div
+            ref={(el) => {
+              curtainRef.current = el;
+              if (el) console.log("[Browser Panel] 🎭 Curtain element rendered in DOM");
+            }}
+            className="teleprompter-curtain absolute inset-0 bg-gradient-to-br from-black via-zinc-900 to-black"
+            style={{
+              zIndex: 10,
+            }}
+          />
+        )}
+
+        {/* Running character - full-width wrapper to sync with curtain */}
+        {showCurtain && (
+          <div
+            className="character-runner absolute inset-0"
+            style={{ zIndex: 20 }}
+          >
+            <div
+              className="absolute right-0 bottom-8 h-32 w-32 sm:h-40 sm:w-40 md:h-48 md:w-48"
+              ref={(el) => {
+                if (el) console.log("[Browser Panel] 🏃‍♂️ Running character container rendered", {
+                  width: el.offsetWidth,
+                  height: el.offsetHeight,
+                  position: el.getBoundingClientRect()
+                });
+              }}
+            >
+              <Lottie
+                animationData={runningCharacter}
+                loop={true}
+                autoplay={true}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  transform: 'scaleX(-1)'  // Mirror horizontally to run left
+                }}
+                onComplete={() => console.log("[Browser Panel] 🎬 Lottie animation completed loop")}
+                onLoopComplete={() => console.log("[Browser Panel] 🔄 Lottie loop complete")}
+                onConfigReady={() => console.log("[Browser Panel] ⚙️ Lottie config ready")}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* CSS for curtain animation */}
+      <style jsx>{`
+        @keyframes curtain-reveal {
+          0% {
+            transform: translateX(0);
+          }
+          20% {
+            transform: translateX(-3%);
+            /* Slow opening - barely moves in first 0.5s */
+          }
+          100% {
+            transform: translateX(-100%);
+            /* Main reveal in remaining 2s */
+          }
+        }
+
+        @keyframes character-run {
+          0% {
+            transform: translateX(0);
+          }
+          20% {
+            transform: translateX(-3%);
+            /* Character walks on slowly */
+          }
+          100% {
+            transform: translateX(-100%);
+            /* Then runs with curtain */
+          }
+        }
+
+        .teleprompter-frame--curtain .teleprompter-curtain {
+          animation: curtain-reveal 2.5s cubic-bezier(0.77, 0, 0.18, 1) 0.5s forwards;
+        }
+
+        .teleprompter-frame--curtain .character-runner {
+          animation: character-run 2.5s cubic-bezier(0.77, 0, 0.18, 1) 0.5s forwards;
+        }
+
+        /* Respect reduced motion preference */
+        @media (prefers-reduced-motion: reduce) {
+          .teleprompter-frame--curtain .teleprompter-curtain {
+            animation: curtain-fade-out 0.4s ease-out 0.2s forwards;
+          }
+
+          .teleprompter-frame--curtain .character-runner {
+            animation: character-fade-out 0.4s ease-out 0.2s forwards;
+          }
+
+          @keyframes curtain-fade-out {
+            from {
+              opacity: 1;
+            }
+            to {
+              opacity: 0;
+            }
+          }
+
+          @keyframes character-fade-out {
+            from {
+              opacity: 1;
+            }
+            to {
+              opacity: 0;
+            }
+          }
+        }
+      `}</style>
     </div>
   );
 }
